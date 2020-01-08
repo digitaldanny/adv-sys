@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "common.h"
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -8,16 +9,10 @@
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  */
 
-#define MAPPING_COUNT           5
-#define MAX_INPUT_STRING_LENGTH 50
-#define ENTER                   10
-#define LB                      '('
-#define RB                      ')'
-#define delimiter               ','
-
 #define LEN_USER_ID          4
 #define LEN_ACTION           1
 #define LEN_TOPIC            15
+#define MAPPING_COUNT        5
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -69,8 +64,6 @@ const int32_t RULE_WEIGHT[MAPPING_COUNT] = {50,      20,     -10,    30,     40}
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  */
 
-int32_t console_string_read(char* store_string_location);
-void console_string_write(char* string, uint32_t len);
 int32_t console_tuple_read(tupleIn_t * tuple_in);
 int32_t console_tuple_write(tupleOut_t * tuple_out);
 int32_t map(tupleIn_t * in, tupleOut_t * out);
@@ -80,50 +73,6 @@ int32_t map(tupleIn_t * in, tupleOut_t * out);
  *                           FUNCTIONS
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  */
-
-/*
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
- * SUMMARY: console_string_read
- * This function reads in characters from the terminal until
- * it overflows the MAX_INPUT_STRING_LENGTH (returning an error)
- * or it reaches an CR character from the space bar.
- * 
- * RETURN: length of the string before reaching CR. Otherwise, -1.
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
- */
-int32_t console_string_read(char* store_string_location)
-{
-    char nextCharacter = 'X';
-    uint32_t stringLength = 0;
-
-    for (uint32_t i = 0; i < MAX_INPUT_STRING_LENGTH; i++)
-    {
-        nextCharacter = getchar();
-        store_string_location[i] = nextCharacter;
-        stringLength++;
-
-        if (nextCharacter == (char)ENTER) 
-            return stringLength;
-    }
-
-    return -1;
-}
-
-/*
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
- * SUMMARY: console_string_write
- * This function writes characters to the terminal until reaching
- * the string length paramter.
- * 
- * NOTE: This function doesn't require placing a NULL character
- * at the end of the string to work.
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
- */
-void console_string_write(char* string, uint32_t len)
-{
-    for (uint32_t i = 0; i < len; i++)
-        putchar(string[i]);
-}
 
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
@@ -151,7 +100,6 @@ int32_t console_tuple_read(tupleIn_t * tuple)
             // Wait for left bracket before reading into the tuple..
             case E_LEFT_BRACKET:
                 if (nextChar == LB)
-                    
                     state = E_USER_ID;
                 break;
 
@@ -160,7 +108,7 @@ int32_t console_tuple_read(tupleIn_t * tuple)
             case E_USER_ID:
 
                 // comma found.. store future characters in the next state
-                if (nextChar == delimiter)
+                if (nextChar == DELIMITER)
                 {
                     state = E_ACTION;
                     charCount = 0;
@@ -184,7 +132,7 @@ int32_t console_tuple_read(tupleIn_t * tuple)
             case E_ACTION:
 
                 // comma found.. store future characters in the next state
-                if (nextChar == delimiter)
+                if (nextChar == DELIMITER)
                 {
                     state = E_TOPIC;
                     charCount = 0;
@@ -203,24 +151,30 @@ int32_t console_tuple_read(tupleIn_t * tuple)
 
                 break;
 
-            // Add new characters to the topic until comma is found
-            // OR exceeding max characters..
+            // Add new characters to the topic until the right bracket is
+            // found. Then fill in the remainder of the characters with null
+            // characters and exit..
             case E_TOPIC:
 
-                // store next character in the current property..
-                tuple->action = nextChar;
-                charCount++;
-
-                // full tuple read in.. ready to exit
-                if (charCount == LEN_TOPIC)
-                    state = E_RIGHT_BRACKET;
-
-                break;
-
-            // Wait for right bracket before exitting the loop..
-            case E_RIGHT_BRACKET:
+                // Tuple is complete when the right bracket has been found. Fill
+                // in the empty values with spaces
                 if (nextChar == RB)
+                {
                     exitLoop = 1;
+                    for (; charCount < LEN_TOPIC; charCount++)
+                        tuple->topic[charCount] = SPACE;
+                }
+                // reached max topic length.. throw an error.
+                else if (charCount == LEN_TOPIC)
+                {
+                    error = -1;
+                }
+                // new character to add to the tuple's topic property.
+                else
+                {
+                    tuple->topic[charCount] = nextChar;
+                    charCount++;
+                }
                 break;
 
             default:
@@ -255,9 +209,9 @@ int32_t console_tuple_write(tupleOut_t * tuple)
         // print out the tuple in the expected format..
         putchar(LB);
         console_string_write(tuple->userid, sizeof(tuple->userid));
-        putchar(delimiter);
+        putchar(DELIMITER);
         console_string_write(tuple->topic, sizeof(tuple->topic));
-        putchar(delimiter);
+        putchar(DELIMITER);
         console_string_write(weightString, sizeof(weightString));
         putchar(RB);
         printf("\n");
@@ -330,37 +284,23 @@ int32_t map(tupleIn_t * in, tupleOut_t * out)
  * EXAMPLE OUTPUT:  (1111,history,50)
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  */
-void main (void)
+int main (void)
 {
     tupleOut_t outputTuple;
     tupleIn_t inputTuple;
+    int32_t error = 0;
 
-    while (1)
+    while (!error)
     {
-        printf("Create a tuple..\n");
-
-        // get data from the terminal
-        int32_t error = console_tuple_read(&inputTuple);
-        if (error == -1)
-            printf("ERROR in tuple read\n");  
-        else
-            printf("successful tuple read\n");
-
-        printf("INPUT TUPLE...\n");
-
-        printf("USER ID\n");
-        console_string_write(inputTuple.userid, sizeof(inputTuple.userid));
-
-        printf("\nACTION\n");
-        putchar(inputTuple.action);
-
-        printf("\nTOPIC\n");
-        console_string_write(inputTuple.topic, sizeof(inputTuple.topic));
-        printf("\n\n");
+        // get data from the std input
+        error = console_tuple_read(&inputTuple);
 
         // map the data to the output tuple and output
         map(&inputTuple, &outputTuple);
+
+        // output new tuple to the std output
         console_tuple_write(&outputTuple);
-        break;
     }  
+
+    return 0;
 }
