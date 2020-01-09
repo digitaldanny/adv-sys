@@ -2,6 +2,17 @@
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
+ *                            GLOBALS
+ * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
+ */
+
+// The RULE_ACTIONS and RULE_WEIGHTS below define how each action is mapped
+// to the appropriate weight.
+const char RULE_ACTION[MAPPING_COUNT]    = {'P',     'L',    'D',    'C',    'S'};
+const int32_t RULE_WEIGHT[MAPPING_COUNT] = {50,      20,     -10,    30,     40};
+
+/*
+ * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  *                           FUNCTIONS
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  */

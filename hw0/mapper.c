@@ -5,17 +5,6 @@
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
- *                            DEFINES
- * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
- */
-
-#define LEN_USER_ID          4
-#define LEN_ACTION           1
-#define LEN_TOPIC            15
-#define MAPPING_COUNT        5
-
-/*
- * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  *                           TYPEDEFS
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  */
@@ -46,17 +35,6 @@ typedef enum tupleItem
     E_TOPIC,
     E_RIGHT_BRACKET
 } tupleItem_t;
-
-/*
- * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
- *                            GLOBALS
- * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
- */
-
-// The RULE_ACTIONS and RULE_WEIGHTS below define how each action is mapped
-// to the appropriate weight.
-const char RULE_ACTION[MAPPING_COUNT]    = {'P',     'L',    'D',    'C',    'S'};
-const int32_t RULE_WEIGHT[MAPPING_COUNT] = {50,      20,     -10,    30,     40};
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+

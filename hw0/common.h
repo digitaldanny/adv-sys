@@ -16,7 +16,23 @@
 #define RB                      ')'
 #define DELIMITER               ','
 #define SPACE                   32
+
 #define MAX_INPUT_STRING_LENGTH 50
+#define LEN_USER_ID          4
+#define LEN_ACTION           1
+#define LEN_TOPIC            15
+#define MAPPING_COUNT        5
+
+/*
+ * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
+ *                            EXTERNS
+ * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
+ */
+
+// The RULE_ACTIONS and RULE_WEIGHTS below define how each action is mapped
+// to the appropriate weight.
+extern const char RULE_ACTION[MAPPING_COUNT];
+extern const int32_t RULE_WEIGHT[MAPPING_COUNT];
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
