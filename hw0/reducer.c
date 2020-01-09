@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "common.h"
 #include "dictionary.h"
 
@@ -38,17 +39,179 @@ typedef enum state
     E_RIGHT_BRACKET
 } state_t;
 
-void debugger(int32_t value);
-void debugger(int32_t value)
+/*
+ * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
+ *                           PROTOTYPES
+ * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
+ */
+
+int32_t console_tuple_read(tupleIn_t * tuple);
+int32_t console_tuple_write(tupleIn_t * tuple);
+
+/*
+ * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
+ *                           FUNCTIONS
+ * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
+ */
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: console_tuple_read
+ * This function creates an input tuple from an input string.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ */
+int32_t console_tuple_read(tupleIn_t * tuple)
 {
-    char string[15];
-    sprintf(string, "%d", value);
-    string[14] = '\0';
-    printf("%s", string);
+    uint32_t        exitLoop    = 0;
+    int32_t         error       = 0;
+    uint32_t        charCount   = 0;
+    state_t         state       = E_LEFT_BRACKET;
+    char            nextChar    = getchar();
+    char            tempWeight[3] = {'X', 'X', 'X'};
+
+    tuple->error = -1;
+
+    while(exitLoop != 1 && error != -1 && nextChar != ENTER)
+    {
+
+        switch(state)
+        {
+            // Wait for left bracket before reading into the tuple..
+            case E_LEFT_BRACKET:
+                if (nextChar == LB)
+                    state = E_USER_ID;
+                break;
+
+            // Add new characters to the user ID until comma is found
+            // OR exceeding max characters..
+            case E_USER_ID:
+
+                // comma found.. store future characters in the next state
+                if (nextChar == DELIMITER)
+                {
+                    state = E_TOPIC;
+                    charCount = 0;
+                }
+                // comma not found and property length already used.. error on input.
+                else if (charCount == LEN_USER_ID)
+                {
+                    error = -1;
+                }
+                // store next character in the current property..
+                else
+                {
+                    tuple->userid[charCount] = nextChar;
+                    charCount++;
+                }
+
+                break;
+
+            // Add new characters to the topic property until reaching 
+            // max characters OR comma is found..
+            case E_TOPIC:
+
+                // comma found.. fill the rest of the characters with spaces
+                if (nextChar == DELIMITER)
+                {
+                    for (; charCount < LEN_TOPIC; charCount++)
+                        tuple->topic[charCount] = SPACE;
+
+                    state = E_WEIGHT;
+                    charCount = 0;
+                }
+                // comma not found and property length already used.. error on input.
+                else if (charCount == LEN_TOPIC)
+                {
+                    error = -1;
+                }
+                // store next character in the current property..
+                else
+                {
+                    tuple->topic[charCount] = nextChar;
+                    charCount++;
+                }
+
+                break;
+
+            // Add new characters till the right bracket is found. Convert the
+            // characters from string to integer.
+            case E_WEIGHT:
+
+                // Tuple is complete when the right bracket has been found. Convert
+                // the temporary string to an integer and end the function.
+                if (nextChar == RB)
+                {
+                    tuple->weight = atoi(tempWeight);
+                    tuple->error = 0;
+                    exitLoop = 1;
+                }
+                // reached max topic length.. throw an error.
+                else if (charCount == LEN_WEIGHT)
+                {
+                    error = -1;
+                }
+                // new character to add to the tuple's topic property.
+                else
+                {
+                    tempWeight[charCount] = nextChar;
+                    charCount++;
+                }
+                break;
+
+            default:
+                printf("ERROR: Should not be entering this case..");  
+                break;  
+        } 
+
+        nextChar = getchar();
+    }
+
+    return error;
 }
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: console_tuple_write
+ * This function creates an output string from an output tuple.
+ * 
+ * RETURN: 0 for valid data, -1 for error
+ * 
+ * EXAMPLE OUTPUT: "(1111,history,50)"
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ */
+int32_t console_tuple_write(tupleIn_t * tuple)
+{
+    if (tuple->error == 0)
+    {
+        // convert integer weight into printable string
+        char weightString[3];
+        sprintf(weightString, "%d", tuple->weight);
+
+        // print out the tuple in the expected format..
+        putchar(LB);
+        console_string_write(tuple->userid, LEN_USER_ID);
+        putchar(DELIMITER);
+        console_string_write(tuple->topic, LEN_TOPIC);
+        putchar(DELIMITER);
+        console_string_write(weightString, sizeof(weightString));
+        putchar(RB);
+        printf("\n");
+        
+        return 0;
+    }
+    else
+        return -1;
+}
+
+/*
+ * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
+ *                              MAIN
+ * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
+ */
 
 int main (void)
 {
+    /*
     // constructor
     node_t * dictionary = dict();
 
@@ -58,50 +221,60 @@ int main (void)
     debugger(changedNode->value);
     printf("\n\n");
 
-    // making a new entry
-    changedNode = dictAddToValue(dictionary, "Mello Zorld???", 456);
-    printf("Mello Zorld: ");
-    debugger(changedNode->value);
-    printf("\n\n");
-
-    // adding to a previous entry
-    changedNode = dictAddToValue(dictionary, "Hello world!!!", 5);
-    printf("Hello world: ");
-    debugger(changedNode->value);
-    printf("\n\n");
-
-    // adding to a previous entry
-    changedNode = dictAddToValue(dictionary, "Mello Zorld???", 1000);
-    printf("Mello Zorld: ");
-    debugger(changedNode->value);
-    printf("\n\n");
-
-    // adding to a previous entry
-    changedNode = dictAddToValue(dictionary, "Hello world!!!", 5);
-    printf("Hello world: ");
-    debugger(changedNode->value);
-    printf("\n\n");
-
-    // adding to a previous entry
-    changedNode = dictAddToValue(dictionary, "Mello Zorld???", 20000);
-    printf("Mello Zorld: ");
-    debugger(changedNode->value);
-    printf("\n\n");
-
-    // add a new node
-    changedNode = dictAddToValue(dictionary, "This isn't real", 12321);
-    printf("This isn't real: ");
-    debugger(changedNode->value);
-    printf("\n\n");
-
-    // add a new node
-    changedNode = dictAddToValue(dictionary, "This isn't real", 12321);
-    printf("This isn't real: ");
-    debugger(changedNode->value);
-    printf("\n\n");
-
     // free all the allocated data
     dictFreeNodes(dictionary);
+    */
+
+   //tupleOut_t outputTuple;
+
+   // // initialize the user ID
+   // char currId[LEN_USER_ID];
+   // char prevId[LEN_USER_ID];
+   // for (uint16_t i = 0; i < LEN_USER_ID; i++)
+   // {
+   //     currId[i] = 'X';
+   //     prevId[i] = 'Y';
+   // }
+
+    while(1)
+    {
+        // reinitialize every iteration so the array start off empty.
+        tupleIn_t inputTuple;
+
+        // read in tuples from standard input
+        int32_t error = console_tuple_read(&inputTuple);
+
+        if (!error)
+        {
+            console_tuple_write(&inputTuple);
+
+            /*
+            printf(inputTuple.userid, LEN_USER_ID);
+            printf("\n");
+            
+            printf(inputTuple.topic, LEN_TOPIC);
+            printf("\n");
+
+            char tempString[3];
+            sprintf(tempString, "%d", inputTuple.weight);
+            printf("%s", tempString);
+            printf("\n");
+            */
+        }
+        else
+        {
+            printf("WARNING: END OF FILE!!");
+            break;
+        }
+
+        // generate the output tuple for the current user ID
+        //calculateTotals(&inputTuple, &outputTuple);
+
+        // output the generated tuple for the current user ID
+        //console_tuple_write(&outputTuple);
+
+        // determine if the program is ready to exit
+    }
 
     return 0;
 }

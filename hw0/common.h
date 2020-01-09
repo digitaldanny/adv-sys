@@ -18,10 +18,11 @@
 #define SPACE                   32
 
 #define MAX_INPUT_STRING_LENGTH 50
-#define LEN_USER_ID          4
-#define LEN_ACTION           1
-#define LEN_TOPIC            15
-#define MAPPING_COUNT        5
+#define LEN_USER_ID             4
+#define LEN_ACTION              1
+#define LEN_TOPIC               15
+#define LEN_WEIGHT              3
+#define MAPPING_COUNT           5
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
