@@ -5,7 +5,7 @@
 #include "common.h"
 #include "dictionary.h"
 
-#define REDUCER_DEBUG_MODE 0
+#define REDUCER_DEBUG_MODE 1
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -42,6 +42,7 @@ int32_t console_tuple_read(tupleIn_t * tuple);
 void console_tuple_write(char* userId, node_t * dictionary);
 void reduce(node_t * dictionary, tupleIn_t * in);
 int32_t compareUserId(char* a, char* b);
+void copyUserId(char* copy, char* orig);
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -159,7 +160,8 @@ int32_t console_tuple_read(tupleIn_t * tuple)
                 break;  
         } 
 
-        nextChar = getchar();
+        if (!exitLoop)
+            nextChar = getchar();
 
         // exit the function if the EOF is found
         if (nextChar == -1)
