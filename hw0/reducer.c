@@ -5,6 +5,8 @@
 #include "common.h"
 #include "dictionary.h"
 
+#define REDUCER_DEBUG_MODE 0
+
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  *                           TYPEDEFS
@@ -20,15 +22,6 @@ typedef struct tupleIn
     int32_t weight;     // WEIGHT - Value mapped from the input action as defined by the set of rules in 'main' summary.
 
 } tupleIn_t;
-
-typedef struct tupleOut 
-{
-    int8_t error;           // ERROR -  0 = tuple data is valid, 1 = There was an error while reading the tuple.
-    char userid[4];         // USERID - 4 digit number
-    char topic[15];         // TOPIC - Pad this with space if unused.
-    int32_t total_weight;   // TOTAL WEIGHT - weights from all functions with the same user and topic are added together here..
-
-} tupleOut_t;
 
 typedef enum state
 {
@@ -46,8 +39,9 @@ typedef enum state
  */
 
 int32_t console_tuple_read(tupleIn_t * tuple);
-int32_t console_tuple_write(tupleOut_t * tuple);
+void console_tuple_write(char* userId, node_t * dictionary);
 void reduce(node_t * dictionary, tupleIn_t * in);
+int32_t compareUserId(char* a, char* b);
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -181,35 +175,38 @@ int32_t console_tuple_read(tupleIn_t * tuple)
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  * SUMMARY: console_tuple_write
- * This function creates an output string from an output tuple.
- * 
- * RETURN: 0 for valid data, -1 for error
- * 
- * EXAMPLE OUTPUT: "(1111,history,50)"
+ * This function creates an output string from a hash map.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
-int32_t console_tuple_write(tupleOut_t * tuple)
+void console_tuple_write(char* userId, node_t * dictionary)
 {
-    if (tuple->error == 0)
+#if REDUCER_DEBUG_MODE == 1   
+    printf("\n================ PROGRAM OUTPUT ================\n\n");
+#endif
+
+    while (dictionary != NULL)
     {
         // convert integer weight into printable string
         char weightString[3];
-        sprintf(weightString, "%d", tuple->total_weight);
+        sprintf(weightString, "%d", dictionary->value);
 
         // print out the tuple in the expected format..
         putchar(LB);
-        console_string_write(tuple->userid, LEN_USER_ID);
+        console_string_write(userId, LEN_USER_ID);
         putchar(DELIMITER);
-        console_string_write(tuple->topic, LEN_TOPIC);
+        console_string_write(dictionary->key, LEN_TOPIC);
         putchar(DELIMITER);
         console_string_write(weightString, sizeof(weightString));
         putchar(RB);
         printf("\n");
-        
-        return 0;
+
+        // go to next node in the hash map
+        dictionary = dictionary->next;
     }
-    else
-        return -1;
+
+#if REDUCER_DEBUG_MODE == 1   
+    printf("\n");
+#endif
 }
 
 /*
@@ -226,6 +223,41 @@ void reduce(node_t * dictionary, tupleIn_t * in)
 }
 
 /*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: compareUserId
+ * Compare strings 'a' and 'b' and return 0 if equal. Otherwise
+ * return -1.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ */
+int32_t compareUserId(char* a, char* b)
+{
+    int32_t error = 0;
+
+    for (uint16_t i = 0; i < LEN_USER_ID; i++)
+    {
+        if (a[i] != b[i])
+        {
+            error = -1;
+            break;
+        }
+    }
+
+    return error;
+}
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: copyUserId
+ * Copy contents of the original string to the copy string.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ */
+void copyUserId(char* copy, char* orig)
+{
+    for (uint16_t i = 0; i < LEN_USER_ID; i++)
+        copy[i] = orig[i];
+}
+
+/*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  *                              MAIN
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -233,26 +265,23 @@ void reduce(node_t * dictionary, tupleIn_t * in)
 
 int main (void)
 {
+    node_t * dictionary = NULL;
 
-   // // initialize the user ID
-   // char currId[LEN_USER_ID];
-   // char prevId[LEN_USER_ID];
-   // for (uint16_t i = 0; i < LEN_USER_ID; i++)
-   // {
-   //     currId[i] = 'X';
-   //     prevId[i] = 'Y';
-   // }
-
-   setbuf(stdout, NULL); // no delay in buffer output
-
-   node_t * dictionary;
-   dictionary = dict();
+    // initialize the user ID
+    char currId[LEN_USER_ID];
+    char prevId[LEN_USER_ID];
+    for (uint16_t i = 0; i < LEN_USER_ID; i++)
+    {
+        currId[i] = 'X';
+        prevId[i] = 'Y';
+    }
+ 
+    setbuf(stdout, NULL); // no delay in buffer output]
 
     while(1)
     {
         // reinitialize every iteration so the array start off empty.
         tupleIn_t inputTuple;
-        //tupleOut_t outputTuple;
 
         // read in tuples from standard input
         int32_t error = console_tuple_read(&inputTuple);
@@ -260,10 +289,26 @@ int main (void)
         // no error in tuple format and has not reached end of the file
         if (!error)
         {
-            reduce(dictionary, &inputTuple); // store the new tuple value in the hashmap
-            dictDisplayContents(dictionary);
-            //console_tuple_write(&outputTuple);
-            printf("\n");
+            // update the current user id and check if it's still
+            // equal to the previous user id.
+            copyUserId(currId, inputTuple.userid);
+
+            // check if this is a new id.. if yes, clear out the dictionary 
+            // and reinitialize the data structure
+            if (compareUserId(currId, prevId) == -1)
+            {
+                // display all contents of the hash map as a list of tuples
+                console_tuple_write(prevId, dictionary);
+
+                // deallocate heap memory for hash map
+                dictFreeNodes(dictionary);
+
+                // initialize a new hash map
+                dictionary = dict();
+            }
+
+            // store the new tuple value in the hash map
+            reduce(dictionary, &inputTuple);
         }
 
         // end of file or error found.. allow the heap memory to be deallocated
@@ -271,8 +316,19 @@ int main (void)
         {
             break;
         }
+
+        // update the previous user id with the new user id
+        copyUserId(prevId, currId);
+
+#if REDUCER_DEBUG_MODE == 1
+        // display the contents of the dictionary to see if elements are being
+        // added correctly.
+        dictDisplayContents(dictionary);
+#endif
     }
 
+    // final check to make sure dictionary was deallocated before exit
+    console_tuple_write(currId, dictionary);
     dictFreeNodes(dictionary);
     return 0;
 }

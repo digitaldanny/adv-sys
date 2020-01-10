@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include "common.h"
 
-#define DICTIONARY_DEBUG 1
+#define DICTIONARY_DEBUG 0
 
 typedef struct node
 {   

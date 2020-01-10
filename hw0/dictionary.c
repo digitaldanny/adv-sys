@@ -115,6 +115,10 @@ node_t* dictAddToValue(node_t* map, char* key, int32_t value)
  */
 void dictFreeNodes(node_t * firstNode)
 {
+    // exit if passed a null pointer
+    if (firstNode == NULL)
+        return;
+
     do
     {
         // first node always points at the next node so that the 
@@ -128,7 +132,7 @@ void dictFreeNodes(node_t * firstNode)
         char tempStr[LEN_TOPIC];     // buffer holds initial string
         snprintf(tempStr, LEN_TOPIC, "%s", nodeToErase->key);
         sprintf(string, "%s: %d", tempStr, nodeToErase->value);
-        printf("%s\n", string);
+        printf("%s\n\n", string);
 #endif
         
         // free the current node..
