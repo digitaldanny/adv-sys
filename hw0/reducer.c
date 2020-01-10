@@ -5,7 +5,7 @@
 #include "common.h"
 #include "dictionary.h"
 
-#define REDUCER_DEBUG_MODE 1
+#define REDUCER_DEBUG_MODE 0
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
