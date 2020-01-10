@@ -161,6 +161,13 @@ int32_t console_tuple_read(tupleIn_t * tuple)
         } 
 
         nextChar = getchar();
+
+        // exit the function if the EOF is found
+        if (nextChar == -1)
+        {
+            if (feof(stdin))
+                error = -1;
+        }
     }
 
     return error;
