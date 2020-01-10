@@ -65,10 +65,6 @@ node_t* dictAddToValue(node_t* map, char* key, int32_t value)
     while (1)
     {
         uint8_t stringsAreEqual = dictCompareStrings(key, iter->key);
-        
-        printf("Current Key: ");
-        printf("%s", iter->key);
-        printf("\n");
 
         // If strings are equal, add the new value to the original value
         // and return a pointer to the node.
@@ -125,11 +121,46 @@ void dictFreeNodes(node_t * firstNode)
         // node to erase can be deleted.
         node_t * nodeToErase = firstNode;
         firstNode = firstNode->next;
+
+#if DICTIONARY_DEBUG == 1
+        printf("********** DELETING KEY ************\n");
+        char string[LEN_TOPIC + 10]; // enough space to store topic string and large number
+        char tempStr[LEN_TOPIC];     // buffer holds initial string
+        snprintf(tempStr, LEN_TOPIC, "%s", nodeToErase->key);
+        sprintf(string, "%s: %d", tempStr, nodeToErase->value);
+        printf("%s\n", string);
+#endif
         
         // free the current node..
         free((void*)nodeToErase);
 
     } while(firstNode != NULL);
+}
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: dictDisplayContents
+ * Displays keys and values to the terminal.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ */
+void dictDisplayContents(node_t* node)
+{
+    printf("+-------------------------------------------+\n");
+    printf("|            DICTIONARY CONTENTS            |\n");
+    printf("+-------------------------------------------+\n");
+
+    // continue displaying the map contents until the end of the
+    // linked list is found.
+    while (node != NULL)
+    {
+        char string[LEN_TOPIC + 10]; // enough space to store topic string and large number
+        char tempStr[LEN_TOPIC];     // buffer holds initial string
+
+        snprintf(tempStr, LEN_TOPIC, "%s", node->key);
+        sprintf(string, "%s: %d", tempStr, node->value);
+        printf("%s\n", string);
+        node = node->next;
+    }
 }
 
 /*

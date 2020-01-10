@@ -46,7 +46,8 @@ typedef enum state
  */
 
 int32_t console_tuple_read(tupleIn_t * tuple);
-int32_t console_tuple_write(tupleIn_t * tuple);
+int32_t console_tuple_write(tupleOut_t * tuple);
+void reduce(node_t * dictionary, tupleIn_t * in);
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -159,11 +160,19 @@ int32_t console_tuple_read(tupleIn_t * tuple)
                 break;
 
             default:
+                error = -1;
                 printf("ERROR: Should not be entering this case..");  
                 break;  
         } 
 
         nextChar = getchar();
+
+        // exit the function if the EOF is found
+        if (nextChar == -1)
+        {
+            if (feof(stdin))
+                error = -1;
+        }
     }
 
     return error;
@@ -179,13 +188,13 @@ int32_t console_tuple_read(tupleIn_t * tuple)
  * EXAMPLE OUTPUT: "(1111,history,50)"
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
-int32_t console_tuple_write(tupleIn_t * tuple)
+int32_t console_tuple_write(tupleOut_t * tuple)
 {
     if (tuple->error == 0)
     {
         // convert integer weight into printable string
         char weightString[3];
-        sprintf(weightString, "%d", tuple->weight);
+        sprintf(weightString, "%d", tuple->total_weight);
 
         // print out the tuple in the expected format..
         putchar(LB);
@@ -204,6 +213,19 @@ int32_t console_tuple_write(tupleIn_t * tuple)
 }
 
 /*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: reduce
+ * Add the input tuple's weight to the hash map using the input
+ * topic. If the topic doesn't exist in the map yet, it will be
+ * added.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ */
+void reduce(node_t * dictionary, tupleIn_t * in)
+{
+    dictAddToValue(dictionary, in->topic, in->weight);
+}
+
+/*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  *                              MAIN
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -211,21 +233,6 @@ int32_t console_tuple_write(tupleIn_t * tuple)
 
 int main (void)
 {
-    /*
-    // constructor
-    node_t * dictionary = dict();
-
-    // adding first value
-    node_t * changedNode = dictAddToValue(dictionary, "Hello world!!!", 10);
-    printf("Hello world: ");
-    debugger(changedNode->value);
-    printf("\n\n");
-
-    // free all the allocated data
-    dictFreeNodes(dictionary);
-    */
-
-   //tupleOut_t outputTuple;
 
    // // initialize the user ID
    // char currId[LEN_USER_ID];
@@ -236,45 +243,36 @@ int main (void)
    //     prevId[i] = 'Y';
    // }
 
+   setbuf(stdout, NULL); // no delay in buffer output
+
+   node_t * dictionary;
+   dictionary = dict();
+
     while(1)
     {
         // reinitialize every iteration so the array start off empty.
         tupleIn_t inputTuple;
+        //tupleOut_t outputTuple;
 
         // read in tuples from standard input
         int32_t error = console_tuple_read(&inputTuple);
 
+        // no error in tuple format and has not reached end of the file
         if (!error)
         {
-            console_tuple_write(&inputTuple);
-
-            /*
-            printf(inputTuple.userid, LEN_USER_ID);
+            reduce(dictionary, &inputTuple); // store the new tuple value in the hashmap
+            dictDisplayContents(dictionary);
+            //console_tuple_write(&outputTuple);
             printf("\n");
-            
-            printf(inputTuple.topic, LEN_TOPIC);
-            printf("\n");
-
-            char tempString[3];
-            sprintf(tempString, "%d", inputTuple.weight);
-            printf("%s", tempString);
-            printf("\n");
-            */
         }
+
+        // end of file or error found.. allow the heap memory to be deallocated
         else
         {
-            printf("WARNING: END OF FILE!!");
             break;
         }
-
-        // generate the output tuple for the current user ID
-        //calculateTotals(&inputTuple, &outputTuple);
-
-        // output the generated tuple for the current user ID
-        //console_tuple_write(&outputTuple);
-
-        // determine if the program is ready to exit
     }
 
+    dictFreeNodes(dictionary);
     return 0;
 }
