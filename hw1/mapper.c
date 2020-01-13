@@ -43,7 +43,7 @@ typedef enum tupleItem
  */
 
 int32_t console_tuple_read(tupleIn_t * tuple_in);
-int32_t console_tuple_write(tupleOut_t * tuple_out);
+int32_t console_tuple_write(tupleOut_t * tuple_out, uint8_t firstPrint);
 int32_t map(tupleIn_t * in, tupleOut_t * out);
 
 /*
@@ -183,13 +183,17 @@ int32_t console_tuple_read(tupleIn_t * tuple)
  * EXAMPLE OUTPUT: "(1111,history,50)"
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
-int32_t console_tuple_write(tupleOut_t * tuple)
+int32_t console_tuple_write(tupleOut_t * tuple, uint8_t firstPrint)
 {
     if (tuple->error == 0)
     {
         // convert integer weight into printable string
         char weightString[3];
         sprintf(weightString, "%d", tuple->weight);
+
+        // delimiter for separate tuples.
+        if (!firstPrint)
+            putchar(DELIMITER);
 
         // print out the tuple in the expected format..
         putchar(LB);
@@ -199,7 +203,6 @@ int32_t console_tuple_write(tupleOut_t * tuple)
         putchar(DELIMITER);
         console_string_write(weightString, sizeof(weightString));
         putchar(RB);
-        printf("\n");
         
         return 0;
     }
@@ -274,6 +277,7 @@ int main (void)
     tupleOut_t outputTuple;
     tupleIn_t inputTuple;
     int32_t error = 0;
+    uint8_t firstPrint = 1;
 
     while (!error)
     {
@@ -284,7 +288,8 @@ int main (void)
         map(&inputTuple, &outputTuple);
 
         // output new tuple to the std output
-        console_tuple_write(&outputTuple);
+        console_tuple_write(&outputTuple, firstPrint);
+        firstPrint = 0; // do always print comma before tuple in future iterations
     }  
 
     return 0;
