@@ -28,8 +28,8 @@
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
 
-void parent(int pfd, char* buf);
-void child(int pfd, char* buf);
+void parent(int pfd);
+void child(int pfd);
 
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
@@ -39,32 +39,31 @@ void child(int pfd, char* buf);
 
 int main(void)
 {
-  int pipeFd[2];              // pipe file descriptors
-  char pipeBuff[PIPE_SIZE];   // buffer for IPC
+  int pipeFd[2]; // pipe file descriptors
 
-    setbuf(stdout, NULL);
+  setbuf(stdout, NULL); // do not buffer stdout
 
-    // set up pipe to write from parent (mapper) to child (reducer)
-    if (pipe(pipeFd) == -1)
-      printf("ERROR: Pipe instantiation..");
+  // set up pipe to write from parent (mapper) to child (reducer)
+  if (pipe(pipeFd) == -1)
+    printf("ERROR: Pipe instantiation..");
 
-    switch(fork())
-    {
-      case -1:
-		    printf("ERROR: Fork can't produce child.."); 
-        break;
+  switch(fork())
+  {
+    case -1:
+	    printf("ERROR: Fork can't produce child.."); 
+      break;
 
-      case 0: // child
-        child(pipeFd[0], pipeBuff);
-        break;
+    case 0: // child
+      child(pipeFd[0]);
+      break;
 
-      default: // parent
-        parent(pipeFd[1], pipeBuff);
-        break;
-    }
+    default: // parent
+      parent(pipeFd[1]);
+      break;
+  }
 
-    printf("ERROR: Main program exit..");
-    return 0;
+  printf("ERROR: Main program exit..");
+  return 0;
 }
 
 /*
@@ -74,21 +73,18 @@ int main(void)
  * standard output to pipe.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
-void parent(int pfd, char* buf)
+void parent(int pfd)
 {
   // route the standard output of this process to the input of the pipe
   dup2(pfd, STDOUT_FD);
+  int err = execlp("./mapper", "./mapper", NULL);
 
-  char testString[] = "Hello world\n";
-
-  while(1)
+  // Error if the process gets to this point..
+  if (err == -1)
   {
-    write(pfd, testString, strlen(testString));
-    printf("Parent: Message sent to child\n");
-
-    // wait for child to finish, then flush and exit.
+    printf("ERROR: Parent is exitting..\n");
     wait(NULL);
-    printf("Parent closing\n");
+    close(pfd);
     exit(0); // flush buffer, close process
   }
 }
@@ -100,38 +96,17 @@ void parent(int pfd, char* buf)
  * standard input to pipe.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
-void child(int pfd, char* buf)
+void child(int pfd)
 {
-  ssize_t numRead; // records number of bytes read from pipe
-
   // route the standard input of this process to be the output of the pipe
   dup2(pfd, STDIN_FD);
-  
-  while(1)
+  int err = execlp("./reducer", "./reducer", NULL);
+
+  // Error if the process gets to this point..
+  if (err == -1)
   {
-    // read message from the parent until pipe is empty
-    while(1)
-    {
-      numRead = read(pfd, buf, PIPE_SIZE);
-      if (numRead == -1)
-      {
-        printf("ERROR: Problem reading from pipe\n");
-        break;
-      }
-      else if (numRead == 0)
-      {
-        break; // EOF found
-      }
-
-      // echo the pipe data back to the standard output
-      if (write(STDOUT_FD, buf, numRead) != numRead)
-      {
-        printf("ERROR: Problem printing out message from pipe\n");
-        break;
-      }
-    }
-
-    printf("Child closing\n");
-    _exit(0); // close process
+    printf("ERROR: Child is exitting..\n");
+    close(pfd);
+    _exit(0);
   }
 }

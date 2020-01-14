@@ -332,5 +332,7 @@ int main (void)
     // final check to make sure dictionary was deallocated before exit
     console_tuple_write(currId, dictionary);
     dictFreeNodes(dictionary);
+
+    printf("ERROR: Reducer program failed\n");
     return 0;
 }
