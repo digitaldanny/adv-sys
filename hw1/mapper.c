@@ -291,7 +291,6 @@ int main (void)
         console_tuple_write(&outputTuple, firstPrint);
         firstPrint = 0; // do always print comma before tuple in future iterations
     }  
-
-    printf("ERROR: Mapper program failed..\n");
+    
     return 0;
 }

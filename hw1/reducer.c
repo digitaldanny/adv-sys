@@ -160,11 +160,12 @@ int32_t console_tuple_read(tupleIn_t * tuple)
                 break;  
         } 
 
-        if (!exitLoop)
-            nextChar = getchar();
+        // if (!exitLoop)
+        //     nextChar = getchar();
+        nextChar = getchar();
 
         // exit the function if the EOF is found
-        if (nextChar == -1)
+        if (nextChar == EOF)
         {
             if (feof(stdin))
                 error = -1;
@@ -316,6 +317,7 @@ int main (void)
         // end of file or error found.. allow the heap memory to be deallocated
         else
         {
+            printf("Reducer end of file found\n");
             break;
         }
 
@@ -330,9 +332,8 @@ int main (void)
     }
 
     // final check to make sure dictionary was deallocated before exit
+    printf("Reducer exitting..\n");
     console_tuple_write(currId, dictionary);
     dictFreeNodes(dictionary);
-
-    printf("ERROR: Reducer program failed\n");
     return 0;
 }

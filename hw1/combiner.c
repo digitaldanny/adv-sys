@@ -11,7 +11,7 @@
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
 
-#define COMBINER_DEBUG_MODE 1
+#define COMBINER_DEBUG_MODE 0
 #define PIPE_SIZE           100
 #define STDIN_FD            0
 #define STDOUT_FD           1
@@ -83,8 +83,8 @@ void parent(int pfd)
   if (err == -1)
   {
     printf("ERROR: Parent is exitting..\n");
-    wait(NULL);
     close(pfd);
+    wait(NULL);
     exit(0); // flush buffer, close process
   }
 }
