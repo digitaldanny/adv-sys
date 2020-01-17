@@ -189,6 +189,7 @@ void console_tuple_write(char* userId, node_t * dictionary)
     {
         // convert integer weight into printable string
         char weightString[3];
+        weightString[2] = ' '; // in case only 2 characters are required
         sprintf(weightString, "%d", dictionary->value);
 
         // print out the tuple in the expected format..
@@ -197,7 +198,8 @@ void console_tuple_write(char* userId, node_t * dictionary)
         putchar(DELIMITER);
         console_string_write(dictionary->key, LEN_TOPIC);
         putchar(DELIMITER);
-        console_string_write(weightString, sizeof(weightString));
+        // console_string_write(weightString, sizeof(weightString));
+        printf("%s", weightString);
         putchar(RB);
         printf("\n");
 

@@ -189,6 +189,7 @@ int32_t console_tuple_write(tupleOut_t * tuple, uint8_t firstPrint)
     {
         // convert integer weight into printable string
         char weightString[3];
+        weightString[2] = '\0'; // in case only 2 characters are required
         sprintf(weightString, "%d", tuple->weight);
 
         // delimiter for separate tuples.
@@ -201,7 +202,8 @@ int32_t console_tuple_write(tupleOut_t * tuple, uint8_t firstPrint)
         putchar(DELIMITER);
         console_string_write(tuple->topic, sizeof(tuple->topic));
         putchar(DELIMITER);
-        console_string_write(weightString, sizeof(weightString));
+        //console_string_write(weightString, sizeof(weightString));
+        printf("%s", weightString);
         putchar(RB);
         
         return 0;
