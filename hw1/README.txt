@@ -5,10 +5,10 @@ following functions..
 
 	Compiles all the source files to produce 3 executables.
 
-2.) ./combiner < input.txt > test.txt
+2.) ./combiner < input.txt | tee test.txt
 
 	Runs the combiner program using the input.txt file provided by Professor Yavuz on Canvas
-	and stores the results in test.txt.
+	and stores the results in test.txt AND the terminal.
 
 3.) diff -q -y -s output.txt test.txt
 

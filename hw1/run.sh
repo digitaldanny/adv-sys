@@ -14,5 +14,5 @@
 #!/bin/bash
 #./kill.sh
 make
-./combiner < input.txt > test.txt
+./combiner < input.txt | tee test.txt
 diff -q -y -s output.txt test.txt
