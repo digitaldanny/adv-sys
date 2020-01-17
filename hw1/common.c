@@ -60,3 +60,18 @@ void console_string_write(char* string, uint32_t len)
     for (uint32_t i = 0; i < len; i++)
         putchar(string[i]);
 }
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: debugger
+ * This function 
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ */
+uint16_t debugger(char* string, uint16_t debugMode)
+{
+    if (debugMode) 
+    {
+        printf("**DEBUGGER**: %s\n", string);
+    }
+    return 0;
+}

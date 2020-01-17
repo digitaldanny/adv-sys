@@ -183,9 +183,7 @@ int32_t console_tuple_read(tupleIn_t * tuple)
  */
 void console_tuple_write(char* userId, node_t * dictionary)
 {
-#if REDUCER_DEBUG_MODE == 1   
-    printf("\n================ PROGRAM OUTPUT ================\n\n");
-#endif
+    debugger("\n================ PROGRAM OUTPUT ================\n", REDUCER_DEBUG_MODE);
 
     while (dictionary != NULL)
     {
@@ -206,10 +204,8 @@ void console_tuple_write(char* userId, node_t * dictionary)
         // go to next node in the hash map
         dictionary = dictionary->next;
     }
-
-#if REDUCER_DEBUG_MODE == 1   
-    printf("\n");
-#endif
+  
+    debugger(" ", REDUCER_DEBUG_MODE);
 }
 
 /*
@@ -317,7 +313,7 @@ int main (void)
         // end of file or error found.. allow the heap memory to be deallocated
         else
         {
-            printf("Reducer end of file found\n");
+            debugger("Reducer end of file found", REDUCER_DEBUG_MODE);
             break;
         }
 
@@ -332,7 +328,7 @@ int main (void)
     }
 
     // final check to make sure dictionary was deallocated before exit
-    printf("Reducer exitting..\n");
+    debugger("Reducer exitting..", REDUCER_DEBUG_MODE);
     console_tuple_write(currId, dictionary);
     dictFreeNodes(dictionary);
     return 0;

@@ -43,5 +43,6 @@ extern const int32_t RULE_WEIGHT[MAPPING_COUNT];
 
 int32_t console_string_read(char* store_string_location);
 void console_string_write(char* string, uint32_t len);
+uint16_t debugger(char* string, uint16_t debugMode);
 
 #endif
