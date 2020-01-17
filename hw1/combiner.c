@@ -28,8 +28,8 @@
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
 
-void parent(int pfd);
-void child(int pfd);
+void mapper(int pfd);
+void reducer(int pfd);
 
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
@@ -54,11 +54,11 @@ int main(void)
       break;
 
     case 0: // child
-      child(pipeFd[0]);
+      reducer(pipeFd[0]);
       break;
 
     default: // parent
-      parent(pipeFd[1]);
+      mapper(pipeFd[1]);
       break;
   }
 
@@ -68,12 +68,12 @@ int main(void)
 
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
- * SUMMARY: parent
+ * SUMMARY: mapper
  * This process runs the mapper program and routes the 
  * standard output to pipe.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
-void parent(int pfd)
+void mapper(int pfd)
 {
   // route the standard output of this process to the input of the pipe
   dup2(pfd, STDOUT_FD);
@@ -91,12 +91,12 @@ void parent(int pfd)
 
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
- * SUMMARY: child
+ * SUMMARY: reducer
  * This process runs the reducer program and routes the 
  * standard input to pipe.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
-void child(int pfd)
+void reducer(int pfd)
 {
   // route the standard input of this process to be the output of the pipe
   dup2(pfd, STDIN_FD);
