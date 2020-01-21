@@ -1,22 +1,14 @@
 CC = gcc
 CFLAGS = -Wall
-DEPS = dictionary.h common.h
-A_OBJ = mapper.o common.o
-B_OBJ = reducer.o dictionary.o common.o
-C_OBJ = combiner.o common.o
+DEPS = dictionary.h mapper.h reducer.h common.h
+A_OBJ = combiner.o mapper.o dictionary.o reducer.o common.o
 
 %.o: %.c $(DEPS)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-all: mapper reducer combiner
-
-mapper: $(A_OBJ)
-	gcc $(CFLAGS) -o $@ $^
-
-reducer: $(B_OBJ)
-	gcc $(CFLAGS) -o $@ $^
+all: combiner
 	
-combiner: $(C_OBJ)
-	gcc $(CFLAGS) -o $@ $^
+combiner: $(A_OBJ)
+	gcc -pthread $(CFLAGS) -o $@ $^
 
 

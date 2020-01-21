@@ -10,9 +10,14 @@
 # can be killed by uncommenting the ./kill.sh command and
 # rerunning the ./run script. 
 # +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+# NOTE:
+# This script touches all files so there is no clock skew issues
+# with the makefile.
+# +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 
 #!/bin/bash
 #./kill.sh
+find . -type f -exec touch {} +
 make
-./combiner < input.txt | tee test.txt
+./combiner 10 7 < input.txt | tee test.txt
 diff -q -y -s output.txt test.txt

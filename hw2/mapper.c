@@ -1,50 +1,4 @@
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
-#include "common.h"
-
-/*
- * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
- *                           TYPEDEFS
- * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
- */
-
-typedef struct tupleIn 
-{
-    int8_t error;       // ERROR -  0 = tuple data is valid, 1 = There was an error while reading the tuple.
-    char userid[4];     // USERID - 4 digit number
-    char action;        // ACTION - Character to map using the rules defined in the 'main' summary.
-    char topic[15];     // TOPIC - Pad this with space if unused.
-
-} tupleIn_t;
-
-typedef struct tupleOut 
-{
-    int8_t error;       // ERROR -  0 = tuple data is valid, 1 = There was an error while reading the tuple.
-    char userid[4];     // USERID - 4 digit number
-    char topic[15];     // TOPIC - Pad this with space if unused.
-    int32_t weight;     // WEIGHT - Value mapped from the input action as defined by the set of rules in 'main' summary.
-
-} tupleOut_t;
-
-typedef enum tupleItem
-{
-    E_LEFT_BRACKET,
-    E_USER_ID,
-    E_ACTION,
-    E_TOPIC,
-    E_RIGHT_BRACKET
-} tupleItem_t;
-
-/*
- * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
- *                           PROTOTYPES
- * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
- */
-
-int32_t console_tuple_read(tupleIn_t * tuple_in);
-int32_t console_tuple_write(tupleOut_t * tuple_out, uint8_t firstPrint);
-int32_t map(tupleIn_t * in, tupleOut_t * out);
+#include "mapper.h"
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -55,20 +9,18 @@ int32_t map(tupleIn_t * in, tupleOut_t * out);
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  * SUMMARY: console_tuple_read
- * This function creates an input tuple from an input string.
- * 
- * RETURN: 0 for valid data, -1 for error
- * 
- * EXAMPLE INPUT: "(1111,P,history)"
+ * This function mallocates an input tuple from an input string.
+ * Return is NULL when there is an error reading.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
-int32_t console_tuple_read(tupleIn_t * tuple)
+mTupleIn_t* m_console_tuple_read(void)
 {
     uint32_t        exitLoop    = 0;
     int32_t         error       = 0;
     uint32_t        charCount   = 0;
-    tupleItem_t     state       = E_LEFT_BRACKET;
+    tupleItem_t     state       = ME_LEFT_BRACKET;
     char            nextChar    = getchar();
+    mTupleIn_t*     tuple       = (mTupleIn_t*)malloc(sizeof(mTupleIn_t));
 
     while(exitLoop != 1 && error != -1 && nextChar != ENTER)
     {
@@ -76,19 +28,19 @@ int32_t console_tuple_read(tupleIn_t * tuple)
         switch(state)
         {
             // Wait for left bracket before reading into the tuple..
-            case E_LEFT_BRACKET:
+            case ME_LEFT_BRACKET:
                 if (nextChar == LB)
-                    state = E_USER_ID;
+                    state = ME_USER_ID;
                 break;
 
             // Add new characters to the user ID until comma is found
             // OR exceeding max characters..
-            case E_USER_ID:
+            case ME_USER_ID:
 
                 // comma found.. store future characters in the next state
                 if (nextChar == DELIMITER)
                 {
-                    state = E_ACTION;
+                    state = ME_ACTION;
                     charCount = 0;
                 }
                 // comma not found and property length already used.. error on input.
@@ -107,12 +59,12 @@ int32_t console_tuple_read(tupleIn_t * tuple)
 
             // Add new characters to the action property until reaching 
             // max characters OR comma is found..
-            case E_ACTION:
+            case ME_ACTION:
 
                 // comma found.. store future characters in the next state
                 if (nextChar == DELIMITER)
                 {
-                    state = E_TOPIC;
+                    state = ME_TOPIC;
                     charCount = 0;
                 }
                 // comma not found and property length already used.. error on input.
@@ -132,7 +84,7 @@ int32_t console_tuple_read(tupleIn_t * tuple)
             // Add new characters to the topic until the right bracket is
             // found. Then fill in the remainder of the characters with null
             // characters and exit..
-            case E_TOPIC:
+            case ME_TOPIC:
 
                 // Tuple is complete when the right bracket has been found. Fill
                 // in the empty values with spaces
@@ -162,54 +114,20 @@ int32_t console_tuple_read(tupleIn_t * tuple)
 
         nextChar = getchar();
 
-        // exit the function if the EOF is found
+        // exit the function if the EOF is found, deallocate the tuple,
+        // and return a NULL pointer.
         if (nextChar == -1)
         {
             if (feof(stdin))
+            {
                 error = -1;
+                free(tuple);
+                tuple = NULL;
+            }
         }
     }
 
-    return error;
-}
-
-/*
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
- * SUMMARY: console_tuple_write
- * This function creates an output string from an output tuple.
- * 
- * RETURN: 0 for valid data, -1 for error
- * 
- * EXAMPLE OUTPUT: "(1111,history,50)"
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
- */
-int32_t console_tuple_write(tupleOut_t * tuple, uint8_t firstPrint)
-{
-    if (tuple->error == 0)
-    {
-        // convert integer weight into printable string
-        char weightString[3];
-        weightString[2] = '\0'; // in case only 2 characters are required
-        sprintf(weightString, "%d", tuple->weight);
-
-        // delimiter for separate tuples.
-        if (!firstPrint)
-            putchar(DELIMITER);
-
-        // print out the tuple in the expected format..
-        putchar(LB);
-        console_string_write(tuple->userid, sizeof(tuple->userid));
-        putchar(DELIMITER);
-        console_string_write(tuple->topic, sizeof(tuple->topic));
-        putchar(DELIMITER);
-        //console_string_write(weightString, sizeof(weightString));
-        printf("%s", weightString);
-        putchar(RB);
-        
-        return 0;
-    }
-    else
-        return -1;
+    return tuple;
 }
 
 /*
@@ -220,7 +138,7 @@ int32_t console_tuple_write(tupleOut_t * tuple, uint8_t firstPrint)
  * to the output tuple.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
-int32_t map(tupleIn_t * in, tupleOut_t * out)
+int32_t map(mTupleIn_t * in, mTupleOut_t * out)
 {
     uint8_t index;
     for (index = 0; index < MAPPING_COUNT; index++)
@@ -258,41 +176,4 @@ int32_t map(tupleIn_t * in, tupleOut_t * out)
     }
     else
         return -1;
-}
-
-/*
- * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
- * SUMMARY: main
- * This function maps an input tuple into a different tuple
- * using the rules defined below. The generated tuple is immediately
- * output to the terminal.
- * 
- * RULES:
- * P = 50, L = 20, D = -10, C = 30, S = 40
- * 
- * EXAMPlE INPUT:   (1111,P,history)
- * EXAMPLE OUTPUT:  (1111,history,50)
- * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
- */
-int main (void)
-{
-    tupleOut_t outputTuple;
-    tupleIn_t inputTuple;
-    int32_t error = 0;
-    uint8_t firstPrint = 1;
-
-    while (!error)
-    {
-        // get data from the std input
-        error = console_tuple_read(&inputTuple);
-
-        // map the data to the output tuple and output
-        map(&inputTuple, &outputTuple);
-
-        // output new tuple to the std output
-        console_tuple_write(&outputTuple, firstPrint);
-        firstPrint = 0; // do always print comma before tuple in future iterations
-    }  
-    
-    return 0;
 }
