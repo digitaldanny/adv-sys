@@ -1,2 +1,104 @@
 **DEBUGGER**: Starting MAPPER..
-(0000,history        ,50),(0000,history        ,-10),(0000,art            ,20),(0000,cosmetics      ,30),(0000,entertainment  ,40),(0000,sports         ,50),(0000,photography    ,20),(0001,cosmetics      ,30),(0001,entertainment  ,40),(0001,sports         ,50),(0001,photography    ,20),(0001,history        ,50),(0001,history        ,-10),(0001,art            ,20),(0022,entertainment  ,40),(0022,cosmetics      ,30),(0022,history        ,-10),(0022,sports         ,50),(0022,photography    ,20),(0022,history        ,50),(0022,art            ,20),(0333,sports         ,50),(0333,photography    ,20),(0333,cosmetics      ,30),(0333,history        ,-10),(0333,entertainment  ,40),(0333,history        ,50),(0333,art            ,20),(4444,photography    ,20),(4444,cosmetics      ,30),(4444,sports         ,50),(4444,history        ,-10),(4444,entertainment  ,40),(4444,history        ,50),(4444,art            ,20),(5555,history        ,50),(5555,art            ,20),(5555,cosmetics      ,30),(5555,photography    ,20),(5555,sports         ,50),(5555,history        ,-10),(5555,entertainment  ,40),(6666,photography    ,20),(6666,sports         ,50),(6666,history        ,-10),(6666,entertainment  ,40),(6666,history        ,50),(6666,art            ,20),(6666,cosmetics      ,30),(6666,sports         ,40),(6666,sports         ,40)**DEBUGGER**: MAIN - Exitting..
+**DEBUGGER**: Saving next tuple..
+0
+**DEBUGGER**: Saving next tuple..
+1
+**DEBUGGER**: Saving next tuple..
+2
+**DEBUGGER**: Saving next tuple..
+3
+**DEBUGGER**: Saving next tuple..
+4
+**DEBUGGER**: Saving next tuple..
+5
+**DEBUGGER**: Saving next tuple..
+6
+**DEBUGGER**: Saving next tuple..
+7
+**DEBUGGER**: Saving next tuple..
+8
+**DEBUGGER**: Saving next tuple..
+9
+**DEBUGGER**: Saving next tuple..
+10
+**DEBUGGER**: Saving next tuple..
+11
+**DEBUGGER**: Saving next tuple..
+12
+**DEBUGGER**: Saving next tuple..
+13
+**DEBUGGER**: Saving next tuple..
+14
+**DEBUGGER**: Saving next tuple..
+15
+**DEBUGGER**: Saving next tuple..
+16
+**DEBUGGER**: Saving next tuple..
+17
+**DEBUGGER**: Saving next tuple..
+18
+**DEBUGGER**: Saving next tuple..
+19
+**DEBUGGER**: Saving next tuple..
+20
+**DEBUGGER**: Saving next tuple..
+21
+**DEBUGGER**: Saving next tuple..
+22
+**DEBUGGER**: Saving next tuple..
+23
+**DEBUGGER**: Saving next tuple..
+24
+**DEBUGGER**: Saving next tuple..
+25
+**DEBUGGER**: Saving next tuple..
+26
+**DEBUGGER**: Saving next tuple..
+27
+**DEBUGGER**: Saving next tuple..
+28
+**DEBUGGER**: Saving next tuple..
+29
+**DEBUGGER**: Saving next tuple..
+30
+**DEBUGGER**: Saving next tuple..
+31
+**DEBUGGER**: Saving next tuple..
+32
+**DEBUGGER**: Saving next tuple..
+33
+**DEBUGGER**: Saving next tuple..
+34
+**DEBUGGER**: Saving next tuple..
+35
+**DEBUGGER**: Saving next tuple..
+36
+**DEBUGGER**: Saving next tuple..
+37
+**DEBUGGER**: Saving next tuple..
+38
+**DEBUGGER**: Saving next tuple..
+39
+**DEBUGGER**: Saving next tuple..
+40
+**DEBUGGER**: Saving next tuple..
+41
+**DEBUGGER**: Saving next tuple..
+42
+**DEBUGGER**: Saving next tuple..
+43
+**DEBUGGER**: Saving next tuple..
+44
+**DEBUGGER**: Saving next tuple..
+45
+**DEBUGGER**: Saving next tuple..
+46
+**DEBUGGER**: Saving next tuple..
+47
+**DEBUGGER**: Saving next tuple..
+48
+**DEBUGGER**: Saving next tuple..
+49
+**DEBUGGER**: EOF Found..
+50
+**DEBUGGER**: MAIN - Exitting..

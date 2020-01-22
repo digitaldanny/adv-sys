@@ -47,7 +47,7 @@ typedef enum tupleItem
  */
 
 mTupleIn_t* m_console_tuple_read(void);
-int32_t map(mTupleIn_t * in, mTupleOut_t * out);
+mTupleOut_t* map(mTupleIn_t * in);
 
 
 #endif

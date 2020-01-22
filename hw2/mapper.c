@@ -132,14 +132,16 @@ mTupleIn_t* m_console_tuple_read(void)
 
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
- * SUMMARY: console_tuple_write
+ * SUMMARY: map
  * This function maps the input action to the output weight.
  * Additionally, it deep copies the data from the input tuple
  * to the output tuple.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
-int32_t map(mTupleIn_t * in, mTupleOut_t * out)
+mTupleOut_t* map(mTupleIn_t * in)
 {
+    mTupleOut_t * out = (mTupleOut_t*)malloc(sizeof(mTupleOut_t));
+
     uint8_t index;
     for (index = 0; index < MAPPING_COUNT; index++)
     {
@@ -172,8 +174,11 @@ int32_t map(mTupleIn_t * in, mTupleOut_t * out)
         for (uint32_t i = 0; i < sizeof(in->userid); i++)
             out->userid[i] = in->userid[i];
 
-        return 0;
+        return out;
     }
     else
-        return -1;
+    {
+        free(out);
+        return NULL;
+    }
 }
