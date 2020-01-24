@@ -17,7 +17,7 @@
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
  */
 
-#define COMBINER_DEBUG_MODE 1
+#define COMBINER_DEBUG_MODE 0
 #define PIPE_SIZE           100
 #define STDIN_FD            0
 #define STDOUT_FD           1
@@ -30,7 +30,7 @@
  */
 
 void* mapper(void* dummy);
-void* reducer(void* dummy);
+void* reducer(void* channelNumAddr);
 void* dummythread(void* channelNumAddr);
 
 /*
@@ -40,6 +40,7 @@ void* dummythread(void* channelNumAddr);
  */
  
  pthread_mutex_t mutexFifo = PTHREAD_MUTEX_INITIALIZER;
+ pthread_mutex_t mutexStdout = PTHREAD_MUTEX_INITIALIZER;
 
  volatile uint8_t flagMapperComplete;
  volatile channel_t * chArray;
@@ -96,7 +97,7 @@ int main(int argc, char **argv)
   for (int i = 0; i < numRThreads; i++)
   {
     channelId[i] = i;
-    pthread_create(&rthread[i], NULL, dummythread, (void*)&channelId[i]);
+    pthread_create(&rthread[i], NULL, reducer, (void*)&channelId[i]);
   }
   
   // Wait for threads to exit.. Mapper waits for all reducers,
@@ -152,8 +153,7 @@ void* mapper(void* dummy)
     mTupleIn_t* inputTuple = m_console_tuple_read();
     if (inputTuple == NULL)
     {
-      debugger("EOF Found..", COMBINER_DEBUG_MODE);
-      break;
+      break; // EOF found
     }
 
     // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
@@ -172,7 +172,6 @@ void* mapper(void* dummy)
                   ch->userid, 
                   LEN_USER_ID*sizeof(char)) == 0)
       {
-        printf("MAPPER - found a matching id: %d\n", i);
         break;
       }
 
@@ -183,7 +182,6 @@ void* mapper(void* dummy)
       // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
       if (i > maxChannelNum)
       {
-        printf("MAPPER - creating a new id: %d\n", i);
         maxChannelNum = i;
         ch->set_userid(ch, inputTuple->userid);
         break;
@@ -225,41 +223,13 @@ void* mapper(void* dummy)
  * standard input to pipe.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
-void* dummythread(void* channelNumAddr)
-{
-  int channelNum = *(int*)channelNumAddr;
-  channel_t* ch = (channel_t*)&chArray[channelNum];
-  mTupleOut_t* tuple = NULL;
-
-  // pthread_mutex_lock(&mutexStdout);
-  printf("RED: Channel Number - %d\n", channelNum);
-  // pthread_mutex_unlock(&mutexStdout); 
-
-  // read data from the fifo, display topic and value to terminal,
-  // then sleep.
-  while(flagMapperComplete == 0 || ch->count > 0)
-  {
-    usleep(100000);
-    pthread_mutex_lock(&mutexFifo);
-    tuple = ch->read(ch); 
-    pthread_mutex_unlock(&mutexFifo);
-
-    // print out tuple data to user if there was valid data
-    if (tuple != NULL)
-    {
-      printf("R: %d - %s\n", channelNum, tuple->userid);
-      free(tuple);
-    }
-  }
-
-  debugger("REDUCER returning..", COMBINER_DEBUG_MODE);
-  return NULL;
-}
-
-void* reducer(void* dummy)
+void* reducer(void* channelNumAddr)
 {
   debugger("Starting REDUCER..", COMBINER_DEBUG_MODE);
 
+  int channelNum = *(int*)channelNumAddr;
+  channel_t* ch = (channel_t*)&chArray[channelNum];
+  rTupleIn_t* tuple = NULL;
   node_t * dictionary = NULL;
 
   // initialize the user ID
@@ -271,20 +241,20 @@ void* reducer(void* dummy)
     prevId[i] = 'Y';
   }
 
-  while(1)
+  while(flagMapperComplete == 0 || ch->count > 0)
   {
-    // reinitialize every iteration so the array start off empty.
-    rTupleIn_t inputTuple;
-
-    // read in tuples from standard input
-    int32_t error = r_console_tuple_read(&inputTuple);
+    // read in tuples from the channel FIFOs
+    usleep(50);
+    pthread_mutex_lock(&mutexFifo);
+    tuple = (rTupleIn_t*)ch->read(ch); 
+    pthread_mutex_unlock(&mutexFifo);
 
     // no error in tuple format and has not reached end of the file
-    if (!error)
+    if (tuple != NULL)
     {
       // update the current user id and check if it's still
       // equal to the previous user id.
-      copyUserId(currId, inputTuple.userid);
+      copyUserId(currId, tuple->userid);
 
       // check if this is a new id.. if yes, clear out the dictionary 
       // and reinitialize the data structure
@@ -301,14 +271,10 @@ void* reducer(void* dummy)
       }
 
       // store the new tuple value in the hash map
-      reduce(dictionary, &inputTuple);
+      reduce(dictionary, tuple);
+      free(tuple);
     }
-    // end of file or error found.. allow the heap memory to be deallocated
-    else
-    {
-      debugger("Reducer end of file found", REDUCER_DEBUG_MODE);
-      break;
-    }
+
     // update the previous user id with the new user id
     copyUserId(prevId, currId);
 
@@ -320,9 +286,51 @@ void* reducer(void* dummy)
   }
 
   // final check to make sure dictionary was deallocated before exit
+  pthread_mutex_lock(&mutexStdout);
   r_console_tuple_write(currId, dictionary);
+  pthread_mutex_unlock(&mutexStdout);
+
   dictFreeNodes(dictionary);
 
   debugger("Reducer exitting..", REDUCER_DEBUG_MODE);
+  return NULL;
+}
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: dummythread
+ * This thread reads from channel FIFOs and outputs the
+ * contents. 
+ * NOTE: ONLY FOR DEBUGGING..
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ */
+void* dummythread(void* channelNumAddr)
+{
+  int channelNum = *(int*)channelNumAddr;
+  channel_t* ch = (channel_t*)&chArray[channelNum];
+  mTupleOut_t* tuple = NULL;
+
+  // pthread_mutex_lock(&mutexStdout);
+  printf("RED: Channel Number - %d\n", channelNum);
+  // pthread_mutex_unlock(&mutexStdout); 
+
+  // read data from the fifo, display topic and value to terminal,
+  // then sleep.
+  while(flagMapperComplete == 0 || ch->count > 0)
+  {
+    usleep(50);
+    pthread_mutex_lock(&mutexFifo);
+    tuple = ch->read(ch); 
+    pthread_mutex_unlock(&mutexFifo);
+
+    // print out tuple data to user if there was valid data
+    if (tuple != NULL)
+    {
+      printf("R: %d - %s\n", channelNum, tuple->userid);
+      free(tuple);
+    }
+  }
+
+  debugger("REDUCER returning..", COMBINER_DEBUG_MODE);
   return NULL;
 }

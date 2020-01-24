@@ -98,8 +98,6 @@ int channelWriteTuple(channel_t* ch, mTupleOut_t* tuple)
     }
 
     ch->count++;
-
-    printf("WRITE: %s - %d - COUNT: %d\n", ch->head->userid, ch->head->weight, ch->count);
     return 0;
   }
 

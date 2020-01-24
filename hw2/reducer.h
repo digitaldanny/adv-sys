@@ -24,6 +24,9 @@ typedef struct rTupleIn
     char topic[15];     // TOPIC - Pad this with space if unused.
     int32_t weight;     // WEIGHT - Value mapped from the input action as defined by the set of rules in 'main' summary.
 
+    struct rTupleIn* next; // FIFO implementation in channel.c
+    struct rTupleIn* prev; // FIFO implementation in channel.c
+
 } rTupleIn_t;
 
 typedef enum state
