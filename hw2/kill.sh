@@ -9,7 +9,5 @@
 # script to allow files to be recompiled.
 # ----------------------------------------------------------
 
-lsof -t ./reducer | xargs kill &>/dev/null
-lsof -t ./mapper | xargs kill &>/dev/null
 lsof -t ./combiner | xargs kill &>/dev/null
 echo "Handles to executables killed"

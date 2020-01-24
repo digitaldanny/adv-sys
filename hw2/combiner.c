@@ -9,6 +9,7 @@
 #include "common.h"
 #include "mapper.h"
 #include "reducer.h"
+#include "channel.h"
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -24,24 +25,13 @@
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
- *                      TYPEDEFS
- * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
- */
-
-typedef struct channelMap
-{
-  char userid[LEN_USER_ID];
-  mTupleOut_t* tuples;
-} channelMap_t;
-
-/*
- * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
  *                      PROTOTYPES
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
  */
 
 void* mapper(void* dummy);
 void* reducer(void* dummy);
+void* dummythread(void* channelNumAddr);
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -49,10 +39,10 @@ void* reducer(void* dummy);
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
  */
  
- pthread_mutex_t mutexStdout = PTHREAD_MUTEX_INITIALIZER;
+ pthread_mutex_t mutexFifo = PTHREAD_MUTEX_INITIALIZER;
 
  volatile uint8_t flagMapperComplete;
- volatile channelMap_t * chMap;
+ volatile channel_t * chArray;
 
  pthread_t mthread;
  pthread_t* rthread;
@@ -67,34 +57,59 @@ void* reducer(void* dummy);
 
 int main(int argc, char **argv)
 {
-  // handle command line arguments
-  //bufSize = atoi(argv[1]);
-  numRThreads = atoi(argv[2]);
-
-  // initialize local + global variables
-  flagMapperComplete = 0; // flag for mapper to notify reducer of completion
-
-  chMap = (channelMap_t*)malloc(numRThreads*sizeof(channelMap_t)); // tuple buffer
-  for (int i = 0; i < numRThreads; i++)
-    chMap[i].tuples = (mTupleOut_t*)malloc(bufSize*sizeof(mTupleOut_t));
-
-  rthread = (pthread_t*)malloc(numRThreads*sizeof(pthread_t));
-
+  // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
   // turn off stdout/stdin buffers
+  // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
   setbuf(stdout, NULL);
   setbuf(stdin, NULL);
 
+  // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+  // handle command line arguments
+  // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+  bufSize = atoi(argv[1]);
+  numRThreads = atoi(argv[2]);
+
+  // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+  // initialize local + global variables
+  // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+  flagMapperComplete = 0; // flag for mapper to notify reducer of completion
+  rthread = (pthread_t*)malloc(numRThreads*sizeof(pthread_t));
+
+  // initialize channels+buffers for passing tuples to reducers
+  chArray = (channel_t*)malloc(numRThreads*sizeof(channel_t));
+
+  for (int i = 0; i < numRThreads; i++)
+  {
+    if (channel((channel_t*)&chArray[i], bufSize) == -1)
+      return 0;
+  }
+
+  // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
   // start all threads..
+  // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+
+  // mallocating channel ID so that the thread can initialize before
+  // the for loop number changes
+  int * channelId = malloc(numRThreads*sizeof(int));
+
   pthread_create(&mthread, NULL, mapper, NULL);
-  // for (int i = 0; i < numRThreads; i++)
-  //   pthread_create(&rthread[i], NULL, reducer, NULL);
+  for (int i = 0; i < numRThreads; i++)
+  {
+    channelId[i] = i;
+    pthread_create(&rthread[i], NULL, dummythread, (void*)&channelId[i]);
+  }
   
   // Wait for threads to exit.. Mapper waits for all reducers,
   // so main only needs to wait for the mapper thread.
   pthread_join(mthread, NULL);
 
   debugger("MAIN - Exitting..", COMBINER_DEBUG_MODE);
-
+  
+  // after all channel buffers have been read by reducer threads,
+  // channels may be deallocated.
+  free(rthread);
+  free(channelId);
+  free((void*)chArray);
   return 0;
 }
 
@@ -120,76 +135,85 @@ int main(int argc, char **argv)
  */
 void* mapper(void* dummy)
 {
-  pthread_mutex_lock(&mutexStdout);
   debugger("Starting MAPPER..", COMBINER_DEBUG_MODE);
-  pthread_mutex_unlock(&mutexStdout);
 
-  int32_t error = 0;
-  int channelNum = 0;
-  int maxChannelNum = 0;
+  int maxChannelNum = -1;
+  int writeErr = 0;
+  channel_t * ch;
 
-  while (!error)
+  while (1)
   {
+    // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
     // ** GET NEW TUPLE VALUE **
     // Get data from the std input and check that it is a valid tuple.
     // If valid, continue with the program.
     // If not valid, set flag to notify reducer threads and exit the program.
+    // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
     mTupleIn_t* inputTuple = m_console_tuple_read();
     if (inputTuple == NULL)
     {
       debugger("EOF Found..", COMBINER_DEBUG_MODE);
-      flagMapperComplete = 1;
       break;
     }
 
+    // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
     // ** CHOOSE WHICH CHANNEL TO WRITE TUPLE TO **
     // Check if the current tuple's user id matches any mapper channels
     // If yes, write to that channel.
     // If not, create a new channel with the current userid.
+    // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
     for (int i = 0; i < numRThreads; i++)
     {
       // ** This statement will be true if the currently selected channel's userid
       //    matches with the current input tuple.
+      ch = (channel_t*)&chArray[i];
+
       if (strncmp(inputTuple->userid, 
-                  (const char*)chMap[channelNum].userid, 
-                  LEN_TOPIC*sizeof(char)) == 0)
+                  ch->userid, 
+                  LEN_USER_ID*sizeof(char)) == 0)
       {
-        channelNum = i;
+        printf("MAPPER - found a matching id: %d\n", i);
         break;
       }
 
+      // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
       // ** If the currently selected channel is greater than the channel count, 
       //    make a new channel, store the tuple values to it, and increase the channel
       //    count.
+      // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
       if (i > maxChannelNum)
       {
-        channelNum = i;
+        printf("MAPPER - creating a new id: %d\n", i);
         maxChannelNum = i;
-        strncpy((char*)chMap[channelNum].userid, 
-                inputTuple->userid, 
-                LEN_TOPIC*sizeof(char));
+        ch->set_userid(ch, inputTuple->userid);
         break;
       }
     }
 
+    // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
     // ** MAPPING DATA AND STORING TO CHANNEL QUEUE **
     // map the data to the output tuple and output
+    // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
     mTupleOut_t* outTuple = map(inputTuple);
-    // ************************************************************************************
-    // ************** STORE OUT TUPLE TO SELECTED CHANNEL'S FIFO HERE *********************
-    // ************************************************************************************
-    free(inputTuple);
+
+    // try to write to the FIFO until the write is successfull
+    do
+    {
+      usleep(50);
+      pthread_mutex_lock(&mutexFifo);
+      writeErr = ch->write(ch, outTuple);
+      pthread_mutex_unlock(&mutexFifo);
+    } while(writeErr < 0);
   }  
 
+  // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
   // ** FREE ALL MEMORY ALLOCATED DATA **
   // Signal the reducer threads that the mapper thread is complete.
   // Wait for all reducer threads to complete, then deallocate the buffer of tuples.
+  // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
   flagMapperComplete = 1;
   for (int i = 0; i < numRThreads; i++)
     pthread_join(rthread[i], NULL);
-  for (int i = 0; i < numRThreads; i++)
-    free(chMap[i].tuples);
-  free((void*)chMap);
 
   return NULL;
 }
@@ -201,11 +225,40 @@ void* mapper(void* dummy)
  * standard input to pipe.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
+void* dummythread(void* channelNumAddr)
+{
+  int channelNum = *(int*)channelNumAddr;
+  channel_t* ch = (channel_t*)&chArray[channelNum];
+  mTupleOut_t* tuple = NULL;
+
+  // pthread_mutex_lock(&mutexStdout);
+  printf("RED: Channel Number - %d\n", channelNum);
+  // pthread_mutex_unlock(&mutexStdout); 
+
+  // read data from the fifo, display topic and value to terminal,
+  // then sleep.
+  while(flagMapperComplete == 0 || ch->count > 0)
+  {
+    usleep(100000);
+    pthread_mutex_lock(&mutexFifo);
+    tuple = ch->read(ch); 
+    pthread_mutex_unlock(&mutexFifo);
+
+    // print out tuple data to user if there was valid data
+    if (tuple != NULL)
+    {
+      printf("R: %d - %s\n", channelNum, tuple->userid);
+      free(tuple);
+    }
+  }
+
+  debugger("REDUCER returning..", COMBINER_DEBUG_MODE);
+  return NULL;
+}
+
 void* reducer(void* dummy)
 {
-  pthread_mutex_lock(&mutexStdout);
   debugger("Starting REDUCER..", COMBINER_DEBUG_MODE);
-  pthread_mutex_unlock(&mutexStdout);
 
   node_t * dictionary = NULL;
 
@@ -267,9 +320,9 @@ void* reducer(void* dummy)
   }
 
   // final check to make sure dictionary was deallocated before exit
-  debugger("Reducer exitting..", REDUCER_DEBUG_MODE);
   r_console_tuple_write(currId, dictionary);
   dictFreeNodes(dictionary);
 
+  debugger("Reducer exitting..", REDUCER_DEBUG_MODE);
   return NULL;
 }

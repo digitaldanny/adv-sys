@@ -122,7 +122,7 @@ mTupleIn_t* m_console_tuple_read(void)
             {
                 error = -1;
                 free(tuple);
-                tuple = NULL;
+                return NULL;
             }
         }
     }
@@ -166,14 +166,10 @@ mTupleOut_t* map(mTupleIn_t * in)
     // inputs to the outputs on all other items.
     if (out->error == 0)
     {
-        // copy TOPIC
-        for (uint32_t i = 0; i < sizeof(in->topic); i++)
-            out->topic[i] = in->topic[i];
-
-        // copy USER ID
-        for (uint32_t i = 0; i < sizeof(in->userid); i++)
-            out->userid[i] = in->userid[i];
-
+        // copy TOPIC and USERID
+        strncpy(out->topic, in->topic, LEN_TOPIC*sizeof(char));
+        strncpy(out->userid, in->userid, LEN_USER_ID*sizeof(char));
+        free(in);
         return out;
     }
     else

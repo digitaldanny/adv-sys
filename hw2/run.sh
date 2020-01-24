@@ -17,6 +17,7 @@
 
 #!/bin/bash
 #./kill.sh
+./reset.sh
 find . -type f -exec touch {} +
 make
 ./combiner 10 7 < input.txt | tee test.txt

@@ -29,6 +29,8 @@ typedef struct mTupleOut
     char topic[15];     // TOPIC - Pad this with space if unused.
     int32_t weight;     // WEIGHT - Value mapped from the input action as defined by the set of rules in 'main' summary.
 
+    struct mTupleOut* next; // FIFO implementation in channel.c
+    struct mTupleOut* prev; // FIFO implementation in channel.c
 } mTupleOut_t;
 
 typedef enum tupleItem
