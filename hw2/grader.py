@@ -19,6 +19,7 @@ Correct Output - This script will generate a new input file with randomly ordere
 #                              CONFIGURATIONS
 # +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
 # RUN_COUNT - number of times the program will be run to test for deadlocks.
+# TIMEOUT_PERIOD - number of seconds before iteration of combiner is killed.
 # COMBINER_DIR - directory of the combiner executable.
 # EXAMPLE_INPUT_DIR - directory of the HW1 example input file.
 # EXAMPLE_OUTPUT_DIR - directory of the HW1 example output file.
@@ -26,6 +27,7 @@ Correct Output - This script will generate a new input file with randomly ordere
 # TEST_OUTPUT_DIR - directory of generated output file after testing TEST_INPUT_DIR.
 # +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
 RUN_COUNT               = 10
+TIMEOUT_PERIOD          = 1
 COMBINER_DIR            = './combiner'
 EXAMPLE_INPUT_DIR       = './input.txt'
 EXAMPLE_OUTPUT_DIR      = './output.txt'
@@ -33,14 +35,34 @@ TEST_INPUT_DIR          = './test_input.txt'
 TEST_OUTPUT_DIR         = './test_output.txt'
 # +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
 
-import sys, os
+import sys, os, signal
 import re
 import random
+import subprocess
+import time
 
 def main():
+    global RUN_COUNT
+    success = 0
+    print("BEGIN TEST!")
+    print("+====="*10+"+")
+
+    # run the combiner program RUN_COUNT number of times and 
+    # record whether the run was successful or not.
     generateRandomInputFile()
-    runCombinerProgram()
-    compareOutputFiles()
+    for i in range(RUN_COUNT):
+        if(runCombinerProgram(i) != 1): 
+            continue
+        if(compareOutputFiles()): 
+            success = success+1
+    
+    # check if every run through the program was successful.
+    print("+====="*10+"+")
+    if (success == RUN_COUNT):
+        print("SUCCESS: All tests passed.")
+    else:
+        print("FAILURE: Passed "+str(success)+"/"+str(RUN_COUNT)+" runs.")
+    print("+====="*10+"+")
     return
 
 '''
@@ -92,15 +114,52 @@ def generateRandomInputFile():
 
 '''
 SUMMARY: runCombinerProgram
+This function runs two processes. The child process will run the combiner
+program while the parent process waits for the child to terminate. After
+a short period of time, the parent process will kill the child if it is
+hanging (deadlock).
 '''
-def runCombinerProgram():
-    return
+def runCombinerProgram(runNum):
+    print("+-----"*10 +"+")
+    print("\t\t\tRunning test #" + str(runNum))
+    print("+-----"*10 +"+")
+
+    pid = os.fork()
+    if pid == 0:
+        # CHILD PROCESS
+        subprocess.call("make")
+        fin = open(TEST_INPUT_DIR, "r")
+        fout = open(TEST_OUTPUT_DIR, "w")
+        subprocess.call(COMBINER_DIR, stdin=fin, stdout=fout)
+        fin.close()
+        fout.close()
+        os._exit(0)
+
+    else:
+        # PARENT PROCESS
+        #child_id, status = os.waitpid(pid, 0)
+        global TIMEOUT_PERIOD
+        timer = 0
+
+        # wait for the combiner to complete OR timeout..
+        time.sleep(TIMEOUT_PERIOD)
+        try:
+            os.kill(pid, signal.SIGSTOP) 
+            info = os.waitpid(pid, 0) 
+            print("TIMEOUT: Combiner process hung and was terminated by parent.")
+            return 0
+
+        except:
+            print("Combiner process executed successfully.")
+
+    print("\n")
+    return 1
 
 '''
 SUMMARY: compareOutputFiles
 '''
 def compareOutputFiles():
-    return
+    return 0
 
 if __name__ == '__main__':
     main()
