@@ -41,6 +41,11 @@ import random
 import subprocess
 import time
 
+'''
+SUMMARY: main
+Main program runs combiner program RUN_COUNT number of times and checks outputs
+with given output file to test for deadlocks/correct output.
+'''
 def main():
     global RUN_COUNT
     success = 0
@@ -63,6 +68,15 @@ def main():
     else:
         print("FAILURE: Passed "+str(success)+"/"+str(RUN_COUNT)+" runs.")
     print("+====="*10+"+")
+    return
+
+'''
+SUMMARY: test_current_files
+This program tests that the current EXAMPLE_OUTPUT_DIR file and TEST_OUTPUT_DIR
+file contain the same tuples.
+'''
+def test_current_files():
+    compareOutputFiles()
     return
 
 '''
@@ -157,9 +171,50 @@ def runCombinerProgram(runNum):
 
 '''
 SUMMARY: compareOutputFiles
+This function compares the tuples in the current test file and the 
+provided example output file.
 '''
 def compareOutputFiles():
+    global TEST_OUTPUT_DIR
+    global EXAMPLE_OUTPUT_DIR
+    errorCount = 0
+
+    fTest = open(TEST_OUTPUT_DIR, 'r')
+    fExample = open(EXAMPLE_OUTPUT_DIR, 'r')
+
+    # instantiate map that will contain the read tuples.
+    tuples = dict()
+
+    # first read in the example output tuples.
+    for line in fExample:
+        tuples[line] = 1
+    
+    # read in the test output tuples.
+    for line in fTest:
+        # Check if the keys exist inside of the dictionary already.
+        # If yes, test output file contains a correct tuple.
+        # If not, the combiner program is missing a tuple.
+        if line in tuples:
+            tuples[line] = 2
+        else:
+            errorCount = errorCount + 1
+            print("Incorrect output in test file: " + line)
+
+    # check if any tuples were in the generated output file but were 
+    # not found in the test output file.
+    for key in tuples:
+        if tuples[key] == 1:
+            print("Missing tuple from the test file: " + key)
+            errorCount = errorCount + 1
+
+    # print out number of differences found between expected output
+    # and combiner's output.
+    print("Number of errors found: " + str(errorCount))
+
+    fTest.close()
+    fExample.close()
     return 0
 
 if __name__ == '__main__':
-    main()
+    #main()
+    test_current_files()

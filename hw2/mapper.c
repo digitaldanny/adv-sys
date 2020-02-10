@@ -22,6 +22,16 @@ mTupleIn_t* m_console_tuple_read(void)
     char            nextChar    = getchar();
     mTupleIn_t*     tuple       = (mTupleIn_t*)malloc(sizeof(mTupleIn_t));
 
+    if (nextChar == -1)
+    {
+        if (feof(stdin))
+        {
+            error = -1;
+            free(tuple);
+            return NULL;
+        }
+    }
+
     while(exitLoop != 1 && error != -1 && nextChar != ENTER)
     {
 
@@ -121,8 +131,8 @@ mTupleIn_t* m_console_tuple_read(void)
             if (feof(stdin))
             {
                 error = -1;
-                free(tuple);
-                return NULL;
+                //free(tuple);
+                return tuple;
             }
         }
     }
