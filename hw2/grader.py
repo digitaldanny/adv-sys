@@ -1,18 +1,9 @@
 '''
 SUMMARY: grader
-This script runs the combiner program from ASP HW2 and checks for deadlocks
-and correct outputs.
-
-TESTS RUN:
-
-Deadlocks - This script will run the 'combiner.c' program "RUN_COUNT" number of times.
-    The script will automatically terminate the program if it hangs. A program will
-    be determined to have no deadlock issues if it can run RUN_COUNT number of times
-    without hanging.
-
-Correct Output - This script will generate a new input file with randomly ordered tuples.
-    The script will run the 'combiner.c' program and check if the generated output file
-    contains the same tuples as the example output text file from HW1.
+This script checks if the combiner program has produced the correct tuples 
+according to the example output file provided in HW2. Additionally, a new 
+randomized test input file will be generated every time this script is 
+run to help check that the combiner program works for all input files.
 '''
 
 # +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -20,7 +11,6 @@ Correct Output - This script will generate a new input file with randomly ordere
 # +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
 # RUN_COUNT - number of times the program will be run to test for deadlocks.
 # TIMEOUT_PERIOD - number of seconds before iteration of combiner is killed.
-# COMBINER_DIR - directory of the combiner executable.
 # EXAMPLE_INPUT_DIR - directory of the HW1 example input file.
 # EXAMPLE_OUTPUT_DIR - directory of the HW1 example output file.
 # TEST_INPUT_DIR - directory of generated input file for testing.
@@ -28,55 +18,26 @@ Correct Output - This script will generate a new input file with randomly ordere
 # +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
 RUN_COUNT               = 10
 TIMEOUT_PERIOD          = 1
-COMBINER_DIR            = './combiner'
 EXAMPLE_INPUT_DIR       = './input.txt'
 EXAMPLE_OUTPUT_DIR      = './output.txt'
 TEST_INPUT_DIR          = './test_input.txt'
 TEST_OUTPUT_DIR         = './test_output.txt'
 # +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
 
-import sys, os, signal
-import re
-import random
-import subprocess
-import time
-
-'''
-SUMMARY: main
-Main program runs combiner program RUN_COUNT number of times and checks outputs
-with given output file to test for deadlocks/correct output.
-'''
-def main():
-    global RUN_COUNT
-    success = 0
-    print("BEGIN TEST!")
-    print("+====="*10+"+")
-
-    # run the combiner program RUN_COUNT number of times and 
-    # record whether the run was successful or not.
-    generateRandomInputFile()
-    for i in range(RUN_COUNT):
-        if(runCombinerProgram(i) != 1): 
-            continue
-        if(compareOutputFiles()): 
-            success = success+1
-    
-    # check if every run through the program was successful.
-    print("+====="*10+"+")
-    if (success == RUN_COUNT):
-        print("SUCCESS: All tests passed.")
-    else:
-        print("FAILURE: Passed "+str(success)+"/"+str(RUN_COUNT)+" runs.")
-    print("+====="*10+"+")
-    return
+import re, random
 
 '''
 SUMMARY: test_current_files
 This program tests that the current EXAMPLE_OUTPUT_DIR file and TEST_OUTPUT_DIR
-file contain the same tuples.
+file contain the same tuples. Additionally, it generates a new randomized input
+file for the next time the test is run.
 '''
-def test_current_files():
-    compareOutputFiles()
+def main():
+    try:
+        compareOutputFiles()
+        generateRandomInputFile()
+    except:
+        print("Error running grader.py")
     return
 
 '''
@@ -127,49 +88,6 @@ def generateRandomInputFile():
     return
 
 '''
-SUMMARY: runCombinerProgram
-This function runs two processes. The child process will run the combiner
-program while the parent process waits for the child to terminate. After
-a short period of time, the parent process will kill the child if it is
-hanging (deadlock).
-'''
-def runCombinerProgram(runNum):
-    print("+-----"*10 +"+")
-    print("\t\t\tRunning test #" + str(runNum))
-    print("+-----"*10 +"+")
-
-    pid = os.fork()
-    if pid == 0:
-        # CHILD PROCESS
-        subprocess.call("make")
-        fin = open(TEST_INPUT_DIR, "r")
-        fout = open(TEST_OUTPUT_DIR, "w")
-        subprocess.call(COMBINER_DIR, stdin=fin, stdout=fout)
-        fin.close()
-        fout.close()
-        os._exit(0)
-
-    else:
-        # PARENT PROCESS
-        #child_id, status = os.waitpid(pid, 0)
-        global TIMEOUT_PERIOD
-        timer = 0
-
-        # wait for the combiner to complete OR timeout..
-        time.sleep(TIMEOUT_PERIOD)
-        try:
-            os.kill(pid, signal.SIGSTOP) 
-            info = os.waitpid(pid, 0) 
-            print("TIMEOUT: Combiner process hung and was terminated by parent.")
-            return 0
-
-        except:
-            print("Combiner process executed successfully.")
-
-    print("\n")
-    return 1
-
-'''
 SUMMARY: compareOutputFiles
 This function compares the tuples in the current test file and the 
 provided example output file.
@@ -216,5 +134,4 @@ def compareOutputFiles():
     return 0
 
 if __name__ == '__main__':
-    #main()
-    test_current_files()
+    main()

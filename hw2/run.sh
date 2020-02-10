@@ -21,4 +21,5 @@
 find . -type f -exec touch {} +
 make
 ./combiner 10 7 < input.txt | tee test_output.txt
-diff -q -y -s output.txt test.txt
+#./combiner 10 7 < test_input.txt | tee test_output.txt
+#python grader.py
