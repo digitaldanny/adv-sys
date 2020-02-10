@@ -20,5 +20,5 @@
 ./reset.sh
 find . -type f -exec touch {} +
 make
-./combiner 10 7 < input.txt | tee test.txt
+./combiner 10 7 < input2.txt | tee test.txt
 diff -q -y -s output.txt test.txt

@@ -31,7 +31,6 @@
 
 void* mapper(void* dummy);
 void* reducer(void* channelNumAddr);
-void* dummythread(void* channelNumAddr);
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -41,6 +40,7 @@ void* dummythread(void* channelNumAddr);
  
  pthread_mutex_t mutexFifo = PTHREAD_MUTEX_INITIALIZER;
  pthread_mutex_t mutexStdout = PTHREAD_MUTEX_INITIALIZER;
+ pthread_mutex_t mutexFlag = PTHREAD_MUTEX_INITIALIZER;
 
  volatile uint8_t flagMapperComplete;
  volatile channel_t * chArray;
@@ -209,7 +209,10 @@ void* mapper(void* dummy)
   // Signal the reducer threads that the mapper thread is complete.
   // Wait for all reducer threads to complete, then deallocate the buffer of tuples.
   // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+  pthread_mutex_lock(&mutexFlag);
   flagMapperComplete = 1;
+  pthread_mutex_unlock(&mutexFlag);
+  
   for (int i = 0; i < numRThreads; i++)
     pthread_join(rthread[i], NULL);
 
@@ -241,8 +244,23 @@ void* reducer(void* channelNumAddr)
     prevId[i] = 'Y';
   }
 
-  while(flagMapperComplete == 0 || ch->count > 0)
+  //while(flagMapperComplete == 0 || ch->count > 0)
+  while(1)
   {
+    int exit = 0;
+
+    // break out of the while loop if the mapper is complete AND
+    // the channel is empty
+    pthread_mutex_lock(&mutexFlag);
+    if (flagMapperComplete) exit++;
+    pthread_mutex_unlock(&mutexFlag);
+
+    pthread_mutex_lock(&mutexFifo);
+    if (ch->count == 0) exit++;
+    pthread_mutex_unlock(&mutexFifo);
+
+    if (exit == 2) break;
+
     // read in tuples from the channel FIFOs
     usleep(50);
     pthread_mutex_lock(&mutexFifo);
@@ -293,44 +311,5 @@ void* reducer(void* channelNumAddr)
   dictFreeNodes(dictionary);
 
   debugger("Reducer exitting..", REDUCER_DEBUG_MODE);
-  return NULL;
-}
-
-/*
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
- * SUMMARY: dummythread
- * This thread reads from channel FIFOs and outputs the
- * contents. 
- * NOTE: ONLY FOR DEBUGGING..
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
- */
-void* dummythread(void* channelNumAddr)
-{
-  int channelNum = *(int*)channelNumAddr;
-  channel_t* ch = (channel_t*)&chArray[channelNum];
-  mTupleOut_t* tuple = NULL;
-
-  // pthread_mutex_lock(&mutexStdout);
-  printf("RED: Channel Number - %d\n", channelNum);
-  // pthread_mutex_unlock(&mutexStdout); 
-
-  // read data from the fifo, display topic and value to terminal,
-  // then sleep.
-  while(flagMapperComplete == 0 || ch->count > 0)
-  {
-    usleep(50);
-    pthread_mutex_lock(&mutexFifo);
-    tuple = ch->read(ch); 
-    pthread_mutex_unlock(&mutexFifo);
-
-    // print out tuple data to user if there was valid data
-    if (tuple != NULL)
-    {
-      printf("R: %d - %s\n", channelNum, tuple->userid);
-      free(tuple);
-    }
-  }
-
-  debugger("REDUCER returning..", COMBINER_DEBUG_MODE);
   return NULL;
 }
