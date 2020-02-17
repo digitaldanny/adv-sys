@@ -109,7 +109,51 @@ void* reader(void* inputFid)
     else
     {
       printf("Account number on line: %s\n", line);
-      // Add account to the binary search tree
+      int account_number = -1;
+      int account_balance = -1;
+      char* token; 
+      char* rest = line; 
+
+      // use this counter to make sure there is only 2 arguments in the 
+      // account number definition. (accountNo accountBalance)
+      int count = 0;
+
+      // separate each line by the delimiter (space).
+      while ((token = strtok_r(rest, " ", &rest)) > 0) 
+      {
+        // Account number definition.
+        if (count == 0)
+        {
+          if ((account_number = atoi(token)) == 0)
+          {
+            printf("ERROR: (integer) account number is invalid.\n");
+            break;
+          }
+        }
+
+        // Account balance definition.
+        else if (count == 1)
+        {
+          if ((account_balance = atoi(token)) == 0)
+          {
+            printf("ERROR: (integer) account number is invalid.\n");
+            break;
+          }
+        }
+
+        // More arguments than expected in this line.
+        else
+        {
+          printf("ERROR: More than 2 arguments for account number definition.\n");
+          break;
+        }
+
+        count++;
+      }
+
+      // If the account details were valid, add it to the account tree.
+      if (account_number > 0 && account_balance > 0)
+        addAccount(account_number, account_balance);
     }
   }
 
