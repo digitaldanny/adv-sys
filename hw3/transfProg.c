@@ -40,11 +40,12 @@ int main(int argc, char **argv)
   FILE* inputFid;
   
   // -------------------------------------------------------
-  // turn off stdout/stdin buffers
+  // turn off stdout/stdin buffers + init tree
   // -------------------------------------------------------
 
   setbuf(stdout, NULL);
   setbuf(stdin, NULL);
+  initAccountTree();
 
   // -------------------------------------------------------
   // handle command line arguments
@@ -100,6 +101,8 @@ int main(int argc, char **argv)
   for (int i = 0; i < numWorkers; i++)
     pthread_join(wthread[i], NULL);
 
+  destroyAccountTree();
+
   // close the input file descriptor
   if (fclose(inputFid) != 0)
   {
@@ -125,8 +128,6 @@ void* reader(void* inputFid)
   char * line = NULL;
   size_t len = 0;
   ssize_t read;
-
-  initAccountTree();
   
   // read all lines of the file and determine if the line is
   // an account number or a transfer..
@@ -273,9 +274,6 @@ void* reader(void* inputFid)
     }
   }
 
-  //printAccountContents();
-  destroyAccountTree();
-
   return NULL;
 }
 
@@ -288,7 +286,7 @@ void* reader(void* inputFid)
  */
 void* worker(void* channel)
 {
-  long long bufferChannel = (long long)channel;
+  int bufferChannel = (int)(long long)channel;
   pthread_mutex_t* mutex = &mutexWorkerBuffer[bufferChannel];
   transfer_buffer_t* buf = &workerBuffer[bufferChannel];
 
@@ -315,20 +313,18 @@ void* worker(void* channel)
       amount = buf->amount;
       buf->empty = 1;
       transfer = 1;
-      printf("Rxd (%d) - src: %d, dest: %d, amount: %d\n", (int)bufferChannel, src, dest, amount);
+      printf("Rxd (%d) - src: %d, dest: %d, amount: %d\n", bufferChannel, src, dest, amount);
     }
     pthread_mutex_unlock(mutex);
 
     // Wait for the source + destination to both be available.
     if (transfer)
     {
+      
       // attempt to do the transaction until it completes successfully.
-      while (accountTransaction(src, dest, amount) == -1)
-        usleep(10000); // sleep for 10 ms to avoid starvation.
+      // while ((accountTransaction(src, dest, amount)) == -1)
+      //   usleep(10000); // sleep for 10 ms to avoid starvation.
       transfer = 0;
-
-      printf("Transfer complete\n");
-      printAccountContents();
     }
 
     usleep(10000); // sleep for 10 ms to avoid starvation.

@@ -35,8 +35,10 @@ pthread_mutex_t mutexTransfer;
  */
 void initAccountTree()
 {
+  pthread_mutex_lock(&mutexTransfer);
   root = NULL;
   mutexTransfer = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
+  pthread_mutex_unlock(&mutexTransfer);
 }
 
 /*
@@ -55,11 +57,13 @@ int addAccount(int account_number, int starting_balance)
   node->right_node = NULL;
   node->mutex = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
 
+  pthread_mutex_lock(&mutexTransfer);
+
   // Base case.. initializing the root.
   if (root == NULL)
   {
-    printf("Initializing root.\n");
     root = node;
+    pthread_mutex_unlock(&mutexTransfer);
     return 0;
   }
 
@@ -67,6 +71,8 @@ int addAccount(int account_number, int starting_balance)
   else
   {
     _insertAccountInTree(root, node);
+    pthread_mutex_unlock(&mutexTransfer);
+    return 0;
   }
 
   return -1;
@@ -82,18 +88,19 @@ int addAccount(int account_number, int starting_balance)
 int accountTransaction(int src_account, int dst_account, int value)
 {
   // find the account nodes that will be changed.
+  pthread_mutex_lock(&mutexTransfer);
   account_t* srcNode = _searchTree(root, src_account);
   account_t* destNode = _searchTree(root, dst_account);
   if (srcNode == NULL || destNode == NULL)
   {
-    //printf("ERROR: Source (%d) OR destination (%d) could not be found.\n", src_account, dst_account);
+    printf("ERROR: Source (%d) OR destination (%d) could not be found.\n", src_account, dst_account);
+    pthread_mutex_unlock(&mutexTransfer);
     return -1;
   }
 
   // atomically check if both locks are available. If yes, claim both..
   // If not, don't claim either and return.
   // Do this section atomically so to avoid deadlocks. 
-  pthread_mutex_lock(&mutexTransfer);
   if (pthread_mutex_lock(&srcNode->mutex) > 0) // try to claim source
   {
     pthread_mutex_unlock(&mutexTransfer);
@@ -114,6 +121,8 @@ int accountTransaction(int src_account, int dst_account, int value)
   // unlock the src/dest nodes so other threads can complete.
   pthread_mutex_unlock(&srcNode->mutex);
   pthread_mutex_unlock(&destNode->mutex);
+
+  printf("Transaction complete\n");
   return 0;
 }
 
@@ -126,13 +135,17 @@ int accountTransaction(int src_account, int dst_account, int value)
  */
 void printAccountContents()
 {
+  pthread_mutex_lock(&mutexTransfer);
   printf("**DEBUG** PRINTING IN-ORDER CONTENTS\n");
   _printInOrderContents(root);
+  pthread_mutex_unlock(&mutexTransfer);
 }
 
 void destroyAccountTree()
 {
+  pthread_mutex_lock(&mutexTransfer);
   _destroyTree(root);
+  pthread_mutex_unlock(&mutexTransfer);
 }
 
 /*
