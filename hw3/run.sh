@@ -19,4 +19,4 @@
 ./reset.sh
 find . -type f -exec touch {} +
 make
-./transfProg input.txt 1
+./transfProg input.txt 10

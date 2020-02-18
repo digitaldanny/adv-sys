@@ -14,6 +14,8 @@
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
  */
 
+pthread_mutex_t mutexComplete;
+int flagComplete;
 int numWorkers;
 pthread_t rthread;
 pthread_t* wthread;
@@ -28,6 +30,8 @@ transfer_buffer_t* workerBuffer;
 
 void* reader(void* fid);
 void* worker(void* dummy);
+int isReaderComplete();
+void markReaderComplete();
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -67,6 +71,7 @@ int main(int argc, char **argv)
   // and the worker threads.
   // -------------------------------------------------------
 
+  mutexComplete = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
   mutexWorkerBuffer = (pthread_mutex_t*)malloc(numWorkers*sizeof(pthread_mutex_t));
   for (int i = 0; i < numWorkers; i++)
     mutexWorkerBuffer[i] = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
@@ -101,6 +106,7 @@ int main(int argc, char **argv)
   for (int i = 0; i < numWorkers; i++)
     pthread_join(wthread[i], NULL);
 
+  printAccountContents();
   destroyAccountTree();
 
   // close the input file descriptor
@@ -274,6 +280,8 @@ void* reader(void* inputFid)
     }
   }
 
+  // signal the worker threads that there will not be any more input.
+  markReaderComplete();
   return NULL;
 }
 
@@ -315,6 +323,11 @@ void* worker(void* channel)
       transfer = 1;
       printf("Rxd (%d) - src: %d, dest: %d, amount: %d\n", bufferChannel, src, dest, amount);
     }
+    else if (buf->empty == 1 && isReaderComplete())
+    {
+      printf("Ending worker thread: (%d)\n", bufferChannel);
+      break;
+    }
     pthread_mutex_unlock(mutex);
 
     // Wait for the source + destination to both be available.
@@ -322,8 +335,8 @@ void* worker(void* channel)
     {
       
       // attempt to do the transaction until it completes successfully.
-      // while ((accountTransaction(src, dest, amount)) == -1)
-      //   usleep(10000); // sleep for 10 ms to avoid starvation.
+      while ((accountTransaction(src, dest, amount)) == -1)
+        usleep(10000); // sleep for 10 ms to avoid starvation.
       transfer = 0;
     }
 
@@ -331,4 +344,38 @@ void* worker(void* channel)
   }
 
   return NULL;
+}
+
+/*
+ * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
+ *                       FUNCTIONS
+ * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
+ */
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: isReaderComplete
+ * This function checks if the reader thread has marked
+ * itself as completed.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ */
+int isReaderComplete()
+{
+  pthread_mutex_lock(&mutexComplete);
+  int complete = flagComplete;
+  pthread_mutex_unlock(&mutexComplete);
+  return complete;
+}
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: markReaderComplete
+ * This function marks the reader thread as complete.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ */
+void markReaderComplete()
+{
+  pthread_mutex_lock(&mutexComplete);
+  flagComplete = 1;
+  pthread_mutex_unlock(&mutexComplete);
 }
