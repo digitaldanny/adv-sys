@@ -14,7 +14,10 @@
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
  */
 
+int numWorkers;
 pthread_t rthread;
+pthread_mutex_t* mutexWorkerBuffer;
+transfer_buffer_t* workerBuffer;
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -33,7 +36,7 @@ void* reader(void* fid);
 int main(int argc, char **argv)
 {
   FILE* inputFid;
-  int numWorkers;
+  
   // -------------------------------------------------------
   // turn off stdout/stdin buffers
   // -------------------------------------------------------
@@ -52,6 +55,24 @@ int main(int argc, char **argv)
   {
     printf("ERROR: Second input argument (integer) NumWorkers.\n");
     return -1;
+  }
+
+  // -------------------------------------------------------
+  // initialize mutex and buffer connecting the reader thread 
+  // and the worker threads.
+  // -------------------------------------------------------
+  mutexWorkerBuffer = (pthread_mutex_t*)malloc(numWorkers*sizeof(pthread_mutex_t));
+  for (int i = 0; i < numWorkers; i++)
+    mutexWorkerBuffer[i] = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
+
+  // all worker buffer empty flags will be set to mark that they can be filled immediately.
+  workerBuffer = (transfer_buffer_t*)malloc(numWorkers*sizeof(transfer_buffer_t));
+  for (int i = 0; i < numWorkers; i++)
+  {
+    workerBuffer[i].empty = 1;
+    workerBuffer[i].src = -1;
+    workerBuffer[i].dest = -1;
+    workerBuffer[i].amount = -1;
   }
 
   // -------------------------------------------------------
@@ -103,12 +124,106 @@ void* reader(void* inputFid)
     // This should be a transfer if the first character is a "T"
     if (line[0] == 'T')
     {
-      printf("Transfer on line: %s\n", line);
-      // Claim account mutex and make transfer
+      printf("NOT IMPLEMENTED: Transfer on line: %s\n", line);
+
+      char* token; 
+      char* rest = line; 
+      pthread_mutex_t* mutex = NULL;
+      transfer_buffer_t* buf = NULL;
+      int count = 0;
+
+      // transfer information
+      int src = -1;
+      int dest = -1;
+      int amount = -1;
+
+      // separate each line by the delimiter to be loaded into the buffer.
+      while ((token = strtok_r(rest, " ", &rest)) > 0) 
+      {
+        // Transfer keyword.
+        if (count == 0)
+        {
+          continue;
+        }
+
+        // Source account number.
+        else if (count == 1)
+        {
+          if ((src = atoi(token)) == 0)
+          {
+            printf("ERROR: (integer) 'source' account number is invalid.\n");
+            break;
+          }
+        }
+
+        // Destination account number.
+        else if (count == 2)
+        {
+          if ((dest = atoi(token)) == 0)
+          {
+            printf("ERROR: (integer) 'destination' account number is invalid.\n");
+            break;
+          }
+        }
+
+        // Amount transfer.
+        else if (count == 3)
+        {
+          if ((amount = atoi(token)) == 0)
+          {
+            printf("ERROR: (integer) 'amount' is invalid.\n");
+            break;
+          }
+        }
+
+        // More arguments than expected in this line.
+        else
+        {
+          printf("ERROR: More than 4 arguments for transfer request.\n");
+          break;
+        }
+
+        count++;
+      }
+
+      // find a channel that is available to write to and claim the mutex.
+      // if none are available immediately, continue looping until one is found.
+      int foundABuffer = 0;
+      do
+      {
+        for (int i = 0; i < numWorkers; i++)
+        {
+          mutex = &mutexWorkerBuffer[i];
+          buf = &workerBuffer[i];
+
+          // try to claim the lock.. if it is unavailable, check the next lock.
+          if (pthread_mutex_lock(mutex) > 0)
+          {
+            // could not claim the lock.. go to the next buffer.
+          }
+          else
+          {
+            // claimed the lock.. transfer data into the buffer if it is empty.
+            if (buf->empty)
+            {
+              buf->empty = 0;
+              buf->amount = amount;
+              buf->src = src;
+              buf->dest = dest;
+              foundABuffer = 1;
+              printf("Wrote to a buffer: %d\n", i);
+              pthread_mutex_unlock(mutex);
+              break;
+            }
+            pthread_mutex_unlock(mutex);
+          }
+        }
+      } while (!foundABuffer);
     }
+
+    // Initializing an account number + starting balance.
     else
     {
-      printf("Account number on line: %s\n", line);
       int account_number = -1;
       int account_balance = -1;
       char* token; 

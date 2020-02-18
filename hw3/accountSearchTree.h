@@ -23,17 +23,31 @@
  * left_node - node of an account with a smaller account number.
  * right_node - node of an account with a larger account number.
  */
- typedef struct account
- {
-   // account properties
-   int account_number;    // multiple readers are allowed outside of "addAccount." (works for tree traversal)
-   int balance;           // only one reader OR writer is allowed at a time.
-   pthread_mutex_t mutex;
+typedef struct account
+{
+  // account properties
+  int account_number;    // multiple readers are allowed outside of "addAccount." (works for tree traversal)
+  int balance;           // only one reader OR writer is allowed at a time.
+  pthread_mutex_t mutex;
+  // tree properties
+  struct account* left_node;
+  struct account* right_node;
+} account_t;
 
-   // tree properties
-   struct account* left_node;
-   struct account* right_node;
- } account_t;
+/*
+ * SUMMARY: transfer_buffer_t
+ * empty - this flag will be set to 1 whenever it can be written to.
+ * src - source account number for the transfer.
+ * dest - destination account number for the transfer.
+ * amount - amount of money being transferred from source -> destination.
+ */
+typedef struct transfer_buffer
+{
+  int empty;
+  int src;
+  int dest;
+  int amount;
+} transfer_buffer_t;
 
  /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+

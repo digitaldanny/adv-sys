@@ -84,7 +84,7 @@ int accountTransaction(int src_account, int dst_account, int value)
  */
 void printAccountContents()
 {
-  printf("** PRINTING IN-ORDER CONTENTS **\n");
+  printf("**DEBUG** PRINTING IN-ORDER CONTENTS\n");
   _printInOrderContents(root);
 }
 
@@ -157,6 +157,6 @@ void _printInOrderContents(account_t* root)
     return;
 
   _printInOrderContents(root->left_node);
-  printf("AccountNo: %d, Balance: %d\n", root->account_number, root->balance);
+  printf("**DEBUG** AccountNo: %d, Balance: %d\n", root->account_number, root->balance);
   _printInOrderContents(root->right_node);
 }
