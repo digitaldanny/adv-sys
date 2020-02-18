@@ -18,6 +18,7 @@
 */
 
 account_t* root;
+pthread_mutex_t mutexTransfer;
 
 /*
 * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -35,6 +36,7 @@ account_t* root;
 void initAccountTree()
 {
   root = NULL;
+  mutexTransfer = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
 }
 
 /*
@@ -70,9 +72,49 @@ int addAccount(int account_number, int starting_balance)
   return -1;
 }
 
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: accountTransaction
+ * This function attempts to transfer the value from source
+ * account to destination account. 
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ */
 int accountTransaction(int src_account, int dst_account, int value)
 {
-  return -1;
+  // find the account nodes that will be changed.
+  account_t* srcNode = _searchTree(root, src_account);
+  account_t* destNode = _searchTree(root, dst_account);
+  if (srcNode == NULL || destNode == NULL)
+  {
+    //printf("ERROR: Source (%d) OR destination (%d) could not be found.\n", src_account, dst_account);
+    return -1;
+  }
+
+  // atomically check if both locks are available. If yes, claim both..
+  // If not, don't claim either and return.
+  // Do this section atomically so to avoid deadlocks. 
+  pthread_mutex_lock(&mutexTransfer);
+  if (pthread_mutex_lock(&srcNode->mutex) > 0) // try to claim source
+  {
+    pthread_mutex_unlock(&mutexTransfer);
+    return -1;
+  }
+
+  if (pthread_mutex_lock(&destNode->mutex) > 0) // try to claim destination
+  {
+    pthread_mutex_unlock(&mutexTransfer);
+    return -1;
+  }
+  pthread_mutex_unlock(&mutexTransfer);
+
+  // transfer balance from source to destination
+  srcNode->balance -= value;
+  destNode->balance += value;
+
+  // unlock the src/dest nodes so other threads can complete.
+  pthread_mutex_unlock(&srcNode->mutex);
+  pthread_mutex_unlock(&destNode->mutex);
+  return 0;
 }
 
 /*
@@ -159,4 +201,28 @@ void _printInOrderContents(account_t* root)
   _printInOrderContents(root->left_node);
   printf("**DEBUG** AccountNo: %d, Balance: %d\n", root->account_number, root->balance);
   _printInOrderContents(root->right_node);
+}
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: _searchTree
+ * This function recursively searches for a node with a provided
+ * key. If the key is not found, it will return NULL.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ */
+account_t* _searchTree(account_t* root, int account)
+{
+  // key was not found.
+  if (root == NULL)
+    return NULL;
+
+  // key was found.
+  if (root->account_number == account)
+    return root;
+
+  // BST - if key is greater, search right. Else search left.
+  else if (account > root->account_number)
+    return _searchTree(root->right_node, account);
+  else
+    return _searchTree(root->left_node, account);
 }

@@ -56,6 +56,7 @@ typedef struct transfer_buffer
  */
 
 extern account_t* root;
+extern pthread_mutex_t mutexTransfer;
 
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
@@ -74,5 +75,6 @@ void printAccountContents();
 void _insertAccountInTree(account_t* root, account_t* node);
 void _destroyTree(account_t* root);
 void _printInOrderContents(account_t* root);
+account_t* _searchTree(account_t* root, int account);
 
 #endif

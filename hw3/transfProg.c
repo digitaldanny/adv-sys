@@ -16,6 +16,7 @@
 
 int numWorkers;
 pthread_t rthread;
+pthread_t* wthread;
 pthread_mutex_t* mutexWorkerBuffer;
 transfer_buffer_t* workerBuffer;
 
@@ -26,6 +27,7 @@ transfer_buffer_t* workerBuffer;
  */
 
 void* reader(void* fid);
+void* worker(void* dummy);
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -40,12 +42,14 @@ int main(int argc, char **argv)
   // -------------------------------------------------------
   // turn off stdout/stdin buffers
   // -------------------------------------------------------
+
   setbuf(stdout, NULL);
   setbuf(stdin, NULL);
 
   // -------------------------------------------------------
   // handle command line arguments
   // -------------------------------------------------------
+
   if ((inputFid = fopen(argv[1], "r")) == NULL)
   {
     printf("ERROR: Opening input file - first argument (string) InputFile.\n");
@@ -61,6 +65,7 @@ int main(int argc, char **argv)
   // initialize mutex and buffer connecting the reader thread 
   // and the worker threads.
   // -------------------------------------------------------
+
   mutexWorkerBuffer = (pthread_mutex_t*)malloc(numWorkers*sizeof(pthread_mutex_t));
   for (int i = 0; i < numWorkers; i++)
     mutexWorkerBuffer[i] = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
@@ -75,10 +80,16 @@ int main(int argc, char **argv)
     workerBuffer[i].amount = -1;
   }
 
+  // initialize worker threads.
+  wthread = (pthread_t*)malloc(numWorkers*sizeof(pthread_t));
+
   // -------------------------------------------------------
   // start threads
   // -------------------------------------------------------
+
   pthread_create(&rthread, NULL, reader, inputFid);
+  for (long long i = 0; i < numWorkers; i++)
+    pthread_create(&wthread[i], NULL, worker, (void*)i);
 
   // -------------------------------------------------------
   // cleanup
@@ -86,6 +97,8 @@ int main(int argc, char **argv)
 
   // wait for threads to complete before cleanup
   pthread_join(rthread, NULL);
+  for (int i = 0; i < numWorkers; i++)
+    pthread_join(wthread[i], NULL);
 
   // close the input file descriptor
   if (fclose(inputFid) != 0)
@@ -124,8 +137,6 @@ void* reader(void* inputFid)
     // This should be a transfer if the first character is a "T"
     if (line[0] == 'T')
     {
-      printf("NOT IMPLEMENTED: Transfer on line: %s\n", line);
-
       char* token; 
       char* rest = line; 
       pthread_mutex_t* mutex = NULL;
@@ -140,14 +151,8 @@ void* reader(void* inputFid)
       // separate each line by the delimiter to be loaded into the buffer.
       while ((token = strtok_r(rest, " ", &rest)) > 0) 
       {
-        // Transfer keyword.
-        if (count == 0)
-        {
-          continue;
-        }
-
         // Source account number.
-        else if (count == 1)
+        if (count == 1)
         {
           if ((src = atoi(token)) == 0)
           {
@@ -177,7 +182,7 @@ void* reader(void* inputFid)
         }
 
         // More arguments than expected in this line.
-        else
+        else if (count > 3)
         {
           printf("ERROR: More than 4 arguments for transfer request.\n");
           break;
@@ -197,11 +202,7 @@ void* reader(void* inputFid)
           buf = &workerBuffer[i];
 
           // try to claim the lock.. if it is unavailable, check the next lock.
-          if (pthread_mutex_lock(mutex) > 0)
-          {
-            // could not claim the lock.. go to the next buffer.
-          }
-          else
+          if (pthread_mutex_lock(mutex) == 0)
           {
             // claimed the lock.. transfer data into the buffer if it is empty.
             if (buf->empty)
@@ -211,7 +212,7 @@ void* reader(void* inputFid)
               buf->src = src;
               buf->dest = dest;
               foundABuffer = 1;
-              printf("Wrote to a buffer: %d\n", i);
+              printf("Txd (%d) - src: %d, dest: %d, amount: %d\n", i, src, dest, amount);
               pthread_mutex_unlock(mutex);
               break;
             }
@@ -272,8 +273,66 @@ void* reader(void* inputFid)
     }
   }
 
-  printAccountContents();
+  //printAccountContents();
   destroyAccountTree();
+
+  return NULL;
+}
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: worker
+ * This thread reads from its assigned channel and performs
+ * account transfers.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ */
+void* worker(void* channel)
+{
+  long long bufferChannel = (long long)channel;
+  pthread_mutex_t* mutex = &mutexWorkerBuffer[bufferChannel];
+  transfer_buffer_t* buf = &workerBuffer[bufferChannel];
+
+  // transfer variables
+  int src;      // copy of the source account.
+  int dest;     // copy of the destination account.
+  int amount;   // copy of the amount of money to be transferred.
+  int transfer; // 1 if transfer can be completed. 0 if it cannot.
+
+  while(1)
+  {
+    src = -1;
+    dest = -1;
+    amount = -1;
+    transfer = 0;
+
+    // Copy data from the transfer buffer + set the empty flag 
+    // so more data can be transferred to this channel.
+    pthread_mutex_lock(mutex);
+    if (buf->empty == 0)
+    {
+      src = buf->src;
+      dest = buf->dest;
+      amount = buf->amount;
+      buf->empty = 1;
+      transfer = 1;
+      printf("Rxd (%d) - src: %d, dest: %d, amount: %d\n", (int)bufferChannel, src, dest, amount);
+    }
+    pthread_mutex_unlock(mutex);
+
+    // Wait for the source + destination to both be available.
+    if (transfer)
+    {
+      // attempt to do the transaction until it completes successfully.
+      while (accountTransaction(src, dest, amount) == -1)
+        usleep(10000); // sleep for 10 ms to avoid starvation.
+      transfer = 0;
+
+      printf("Transfer complete\n");
+      printAccountContents();
+    }
+
+    usleep(10000); // sleep for 10 ms to avoid starvation.
+  }
 
   return NULL;
 }
