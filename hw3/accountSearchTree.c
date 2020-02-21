@@ -6,7 +6,9 @@
  * NOTE: All functions use the root account pointer defined in the "globals" section
  *      so a tree pointer does not have to be passed in.
  *
- * NOTE: The tree is set up as an unbalanced search tree.
+ * NOTE: This class was originally set up as a binary search tree; however, it has 
+ *    been updated to run as a linked list. This change was to assist in meeting the
+ *    requirement to output accounts in the order they were read in.
  */
 
 #include "accountSearchTree.h"
@@ -18,6 +20,7 @@
 */
 
 account_t* root;
+account_t* tail;
 pthread_mutex_t mutexTransfer;
 
 /*
@@ -33,10 +36,11 @@ pthread_mutex_t mutexTransfer;
  * so the "addAccount" function can work.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
-void initAccountTree()
+void initAccountLinkedList()
 {
   pthread_mutex_lock(&mutexTransfer);
   root = NULL;
+  tail = NULL;
   mutexTransfer = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
   pthread_mutex_unlock(&mutexTransfer);
 }
@@ -53,8 +57,7 @@ int addAccount(int account_number, int starting_balance)
   account_t* node = (account_t*)malloc(sizeof(account_t));
   node->account_number = account_number;
   node->balance = starting_balance;
-  node->left_node = NULL;
-  node->right_node = NULL;
+  node->next = NULL;
   node->mutex = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
 
   pthread_mutex_lock(&mutexTransfer);
@@ -63,14 +66,16 @@ int addAccount(int account_number, int starting_balance)
   if (root == NULL)
   {
     root = node;
+    tail = node;
     pthread_mutex_unlock(&mutexTransfer);
     return 0;
   }
 
-  // Checking for position to add account to (left branch, right branch search)
+  // add to the end of the linked list.
   else
   {
-    _insertAccountInTree(root, node);
+    tail->next = node;
+    tail = node;
     pthread_mutex_unlock(&mutexTransfer);
     return 0;
   }
@@ -89,8 +94,8 @@ int accountTransaction(int src_account, int dst_account, int value)
 {
   // find the account nodes that will be changed.
   pthread_mutex_lock(&mutexTransfer);
-  account_t* srcNode = _searchTree(root, src_account);
-  account_t* destNode = _searchTree(root, dst_account);
+  account_t* srcNode = _searchLinkedList(root, src_account);
+  account_t* destNode = _searchLinkedList(root, dst_account);
   if (srcNode == NULL || destNode == NULL)
   {
     printf("ERROR: Source (%d) OR destination (%d) could not be found.\n", src_account, dst_account);
@@ -136,15 +141,14 @@ int accountTransaction(int src_account, int dst_account, int value)
 void printAccountContents()
 {
   pthread_mutex_lock(&mutexTransfer);
-  printf("**DEBUG** PRINTING IN-ORDER CONTENTS\n");
   _printInOrderContents(root);
   pthread_mutex_unlock(&mutexTransfer);
 }
 
-void destroyAccountTree()
+void destroyAccountLinkedList()
 {
   pthread_mutex_lock(&mutexTransfer);
-  _destroyTree(root);
+  _destroyLinkedList(root);
   pthread_mutex_unlock(&mutexTransfer);
 }
 
@@ -156,46 +160,16 @@ void destroyAccountTree()
 
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
- * SUMMARY: _insertAccountInTree
- * This function searches for the appropriate location to place
- * the node.
+ * SUMMARY: _destroyLinkedList
+ * This function recursively destroys the linked list.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
-void _insertAccountInTree(account_t* root, account_t* node)
-{
-  // right branch search (>)
-  if (node->account_number > root->account_number)
-  {
-    if (root->right_node == NULL)
-      root->right_node = node;
-    else
-      _insertAccountInTree(root->right_node, node);
-  }
-
-  // left branch search (<=)
-  else
-  {
-    if (root->left_node == NULL)
-      root->left_node = node;
-    else
-      _insertAccountInTree(root->left_node, node);
-  }
-}
-
-/*
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
- * SUMMARY: _destroyTree
- * This function recursively destroys the tree starting from the
- * left and working to the right.
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
- */
-void _destroyTree(account_t* root)
+void _destroyLinkedList(account_t* root)
 {
   if (root == NULL)
     return;
 
-  _destroyTree(root->left_node);
-  _destroyTree(root->right_node);
+  _destroyLinkedList(root->next);
   free(root);
 }
 
@@ -203,7 +177,7 @@ void _destroyTree(account_t* root)
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  * SUMMARY: _printInOrderContents
  * This function recursively prints the in-order contents of the
- * accounts in the tree.
+ * accounts in the linked list.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
 void _printInOrderContents(account_t* root)
@@ -211,9 +185,8 @@ void _printInOrderContents(account_t* root)
   if (root == NULL)
     return;
 
-  _printInOrderContents(root->left_node);
   printf("**DEBUG** AccountNo: %d, Balance: %d\n", root->account_number, root->balance);
-  _printInOrderContents(root->right_node);
+  _printInOrderContents(root->next);
 }
 
 /*
@@ -223,7 +196,7 @@ void _printInOrderContents(account_t* root)
  * key. If the key is not found, it will return NULL.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  */
-account_t* _searchTree(account_t* root, int account)
+account_t* _searchLinkedList(account_t* root, int account)
 {
   // key was not found.
   if (root == NULL)
@@ -232,10 +205,6 @@ account_t* _searchTree(account_t* root, int account)
   // key was found.
   if (root->account_number == account)
     return root;
-
-  // BST - if key is greater, search right. Else search left.
-  else if (account > root->account_number)
-    return _searchTree(root->right_node, account);
   else
-    return _searchTree(root->left_node, account);
+    return _searchLinkedList(root->next, account);
 }

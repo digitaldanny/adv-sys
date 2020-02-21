@@ -29,9 +29,9 @@ typedef struct account
   int account_number;    // multiple readers are allowed outside of "addAccount." (works for tree traversal)
   int balance;           // only one reader OR writer is allowed at a time.
   pthread_mutex_t mutex;
-  // tree properties
-  struct account* left_node;
-  struct account* right_node;
+
+  // linked list properties
+  struct account* next;
 } account_t;
 
 /*
@@ -65,16 +65,15 @@ extern pthread_mutex_t mutexTransfer;
  */
 
 // PUBLIC
-void initAccountTree();
+void initAccountLinkedList();
 int addAccount(int account_number, int starting_balance);
 int accountTransaction(int src_account, int dst_account, int value);
-void destroyAccountTree();
+void destroyAccountLinkedList();
 void printAccountContents();
 
 // PRIVATE
-void _insertAccountInTree(account_t* root, account_t* node);
-void _destroyTree(account_t* root);
+void _destroyLinkedList(account_t* root);
 void _printInOrderContents(account_t* root);
-account_t* _searchTree(account_t* root, int account);
+account_t* _searchLinkedList(account_t* root, int account);
 
 #endif

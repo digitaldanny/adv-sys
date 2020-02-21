@@ -49,7 +49,7 @@ int main(int argc, char **argv)
 
   setbuf(stdout, NULL);
   setbuf(stdin, NULL);
-  initAccountTree();
+  initAccountLinkedList();
 
   // -------------------------------------------------------
   // handle command line arguments
@@ -107,7 +107,7 @@ int main(int argc, char **argv)
     pthread_join(wthread[i], NULL);
 
   printAccountContents();
-  destroyAccountTree();
+  destroyAccountLinkedList();
 
   // close the input file descriptor
   if (fclose(inputFid) != 0)
