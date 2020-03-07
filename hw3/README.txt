@@ -1,0 +1,1 @@
+1.) To run this file, type "./run.sh"

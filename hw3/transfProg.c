@@ -116,7 +116,7 @@ int main(int argc, char **argv)
     return -1;
   }
 
-  printf("Program completed successfully.\n");
+  // printf("Program completed successfully.\n");
   return 0;
 }
 
@@ -219,7 +219,7 @@ void* reader(void* inputFid)
               buf->src = src;
               buf->dest = dest;
               foundABuffer = 1;
-              printf("Txd (%d) - src: %d, dest: %d, amount: %d\n", i, src, dest, amount);
+              //printf("Txd (%d) - src: %d, dest: %d, amount: %d\n", i, src, dest, amount);
               pthread_mutex_unlock(mutex);
               break;
             }
@@ -321,11 +321,11 @@ void* worker(void* channel)
       amount = buf->amount;
       buf->empty = 1;
       transfer = 1;
-      printf("Rxd (%d) - src: %d, dest: %d, amount: %d\n", bufferChannel, src, dest, amount);
+      //printf("Rxd (%d) - src: %d, dest: %d, amount: %d\n", bufferChannel, src, dest, amount);
     }
     else if (buf->empty == 1 && isReaderComplete())
     {
-      printf("Ending worker thread: (%d)\n", bufferChannel);
+      //printf("Ending worker thread: (%d)\n", bufferChannel);
       break;
     }
     pthread_mutex_unlock(mutex);

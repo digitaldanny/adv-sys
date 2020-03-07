@@ -127,7 +127,7 @@ int accountTransaction(int src_account, int dst_account, int value)
   pthread_mutex_unlock(&srcNode->mutex);
   pthread_mutex_unlock(&destNode->mutex);
 
-  printf("Transaction complete\n");
+  //printf("Transaction complete\n");
   return 0;
 }
 
@@ -185,7 +185,7 @@ void _printInOrderContents(account_t* root)
   if (root == NULL)
     return;
 
-  printf("**DEBUG** AccountNo: %d, Balance: %d\n", root->account_number, root->balance);
+  printf("%d %d\n", root->account_number, root->balance);
   _printInOrderContents(root->next);
 }
 
