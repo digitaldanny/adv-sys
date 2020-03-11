@@ -4,12 +4,54 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <stdlib.h>
-
+#include <pthread.h>
+#include <sys/mman.h>
+   
 /*
  * ##########################################################
  *                          DEFINES
  * ##########################################################
  */
+
+ #define FUNC_PTR(name, in_type, out_type)    in_type (*name)(out_type)
+
+/*
+ * ##########################################################
+ *                         STRUCTS
+ * ##########################################################
+ */
+typedef struct reducer_tuple_in 
+{
+  char userid[4];     // USERID - 4 digit number
+  char topic[15];     // TOPIC - Pad this with space if unused.
+  int32_t weight;     // WEIGHT - Value mapped from the input action as defined by the set of rules in 'main' summary.
+} reducer_tuple_in_t;
+
+typedef struct reducer_tuple_fifo
+{
+
+  // public functions
+  FUNC_PTR(read, void, void);
+  FUNC_PTR(write, void, void);
+
+  // private parameters
+  pthread_mutex_t* _mutex;
+  reducer_tuple_in_t* _tuple_matrix;
+
+} reducer_tuple_fifo_t;
+
+/*
+ * ##########################################################
+ *                         GLOBALS
+ * ##########################################################
+ */
+
+int bufSize;
+int numWorkers;
+reducer_tuple_in_t* tupleMatrix;
+
+pthread_mutex_t* mutex;
+int* value;
 
 /*
  * ##########################################################
@@ -35,8 +77,6 @@ void reducer(int idx);
 
 int main(int argc, char **argv)
 {
-  int bufSize;
-  int numWorkers;
   int bufIndex = 0;
 
   // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
@@ -68,6 +108,25 @@ int main(int argc, char **argv)
   }
 
   // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+  // create the shared buffer using an mmap.
+  // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
+
+  value = (int*)mmap(NULL, sizeof(int), PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANON, -1, 0);
+  mutex = (pthread_mutex_t*)mmap(NULL, sizeof(pthread_mutex_t), 
+                            PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANON, -1, 0);
+
+  // All tuple data will be held in this matrix.
+  void* areaMatrix = mmap(  NULL, 
+                            bufSize*numWorkers*sizeof(reducer_tuple_in_t), 
+                            PROT_READ | PROT_WRITE,
+                            MAP_SHARED | MAP_ANON, 
+                            -1, 0);
+  tupleMatrix = (reducer_tuple_in_t*)areaMatrix; // matrix[numWorkers][bufSize]
+
+  // The fifo data structure wraps the tuple-matrix and controls the 
+  // mutex locks for all channels (numWorkers).
+
+  // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
   // start all worker threads
   // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
 
@@ -79,20 +138,20 @@ int main(int argc, char **argv)
     if (pid == -1)
     {
 	    printf("ERROR: Fork can't produce child.."); 
-      wait(NULL);
       exit(0);
     }
 
     // child (tasks - reducer)
     else if (pid == 0)
     {
-      reducer(bufIndex++);
+      reducer(bufIndex); // define which buffer child will use
       return 0;
     }
 
     // parent (combiner - child manager)
     else
     {
+      bufIndex++; 
       continue;
     }
   }
@@ -114,7 +173,18 @@ int main(int argc, char **argv)
 
 void mapper(void)
 {
-  printf("Mapper\n");
+  printf("Mapper - writing fifo\n");
+
+  // test writing to tuple array
+  for (int i = 0; i < numWorkers; i++)
+  {
+    for (int j = 0; j < bufSize; j++)
+    {
+      // pthread_mutex_lock(mutex);
+      *value = j;
+      // pthread_mutex_unlock(mutex);
+    }
+  }
 }
 
 /*
@@ -123,7 +193,31 @@ void mapper(void)
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+
  */
 
+
 void reducer(int idx)
 {
-  printf("Reducer %d\n", idx);
+  printf("Reducer %d - reading fifo\n", idx);
+
+  int32_t testNum;
+  
+  /*
+  // test reading from tuple array
+  for (int i = 0; i < numWorkers; i++)
+  {
+    for (int j = 0; j < bufSize; j++)
+    {
+      pthread_mutex_lock(mutex);
+      testNum = tupleMatrix[j + (i-1)*bufSize].weight;
+      pthread_mutex_unlock(mutex);
+
+      printf("Reading number: %d", testNum);
+    }
+  }
+  */
 }
+
+/*
+ * ##########################################################
+ *                        FUNCTIONS
+ * ##########################################################
+ */

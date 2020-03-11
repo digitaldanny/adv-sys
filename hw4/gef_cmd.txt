@@ -1,0 +1,5 @@
+gef config context.layout "regs stack source threads trace"
+break *mapper
+break *reducer
+tmux-setup
+run 10 1

@@ -21,4 +21,4 @@
 find . -type f -exec touch {} +
 make
 #./combiner 10 3 < input.txt | tee test_output.txt
-./combiner 10 3
+./combiner 10 2 < input.txt
