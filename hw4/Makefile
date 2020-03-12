@@ -1,5 +1,9 @@
 CFLAGS = -Wall
-A_OBJ = combiner.c
+DEPS = fifo.h
+OBJ = combiner.o fifo.o
+
+%.o: %.c $(DEPS)
+	gcc -g $(CFLAGS) -c -o $@ $<
 	
-combiner: $(A_OBJ)
+combiner: $(OBJ)
 	gcc -g -pthread $(CFLAGS) -o $@ $^
