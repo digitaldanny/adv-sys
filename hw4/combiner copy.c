@@ -14,8 +14,6 @@
 #include <sys/mman.h>
 
 #include "fifo.h"
-#include "mapper.h"
-#include "reducer.h"
 
 /*
  * ##########################################################
@@ -135,19 +133,18 @@ int main(int argc, char **argv)
 */
 void mapper(void)
 {
-  // define local variables
-  mapper_tuple_in_t* tupleIn;
-  reducer_tuple_in_t* tupleOut;
+  printf("Mapper - writing fifo\n");
 
-  // read in + map more tuples until stdin is empty
-  while((tupleIn = mapper_read_tuple()) != NULL)
+  reducer_tuple_in_t tx;
+  tx.topic[0] = '1';
+  tx.userid[0] = '2';
+  for (int i = 0; i < 15; i++)
   {
-    tupleOut = map(tupleIn);
-    while (fifo->writeUser(tupleOut->userid, tupleOut) == -1);
-    free(tupleOut);
-  }
+    tx.weight = i;
+    while (fifo->write(fifo, i&7, &tx) == -1);
 
-  // signal condition variable
+    printf("Writing to channel %d: %d\n", i&7, i);
+  }
 }
 
 /*

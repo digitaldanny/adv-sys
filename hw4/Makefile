@@ -1,6 +1,6 @@
 CFLAGS = -Wall
-DEPS = fifo.h
-OBJ = combiner.o fifo.o
+DEPS = fifo.h mapper.h reducer.h
+OBJ = combiner.o fifo.o mapper.o reducer.o
 
 %.o: %.c $(DEPS)
 	gcc -g $(CFLAGS) -c -o $@ $<

@@ -28,10 +28,12 @@ static void* areaDepth;
 static void* areaSize;
 static void* areaWrindex;
 static void* areaRdindex;
+static void* areaChmap;
 
 static reducer_tuple_in_t* tupleMatrix;
 static pthread_mutex_t* mutexArray;
 static reducer_tuple_fifo_t* fifo;
+static channel_map_t* fifoChmap;
 
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
@@ -67,6 +69,15 @@ reducer_tuple_fifo_t* Fifo(int num_channels, int buf_depth)
                   -1, 0);
   fifo = (reducer_tuple_fifo_t*)areaFifo;
 
+
+  // Instantiate area for user id / channel mapping structure
+  areaChmap = mmap( NULL,
+                    num_channels*sizeof(channel_map_t),
+                    PROT_AREA, MAP_AREA,
+                    -1, 0);
+  fifoChmap = (channel_map_t*)areaChmap;
+
+
   // Instantiate area for FIFO attributes
   areaDepth = mmap(NULL, num_channels*sizeof(int), PROT_AREA, MAP_AREA, -1, 0);
   areaSize = mmap(NULL, num_channels*sizeof(int), PROT_AREA, MAP_AREA, -1, 0);
@@ -81,8 +92,12 @@ reducer_tuple_fifo_t* Fifo(int num_channels, int buf_depth)
   // and initialize the values if necessary.
   fifo->_tuple = tupleMatrix;
   fifo->_mutex = mutexArray;
+  fifo->_chmap = fifoChmap;
   fifo->read = &fifo_read;
   fifo->write = &fifo_write;
+  fifo->getUserChannel = &fifo_get_user_channel;
+  fifo->readUser = &fifo_read_user_id;
+  fifo->writeUser = &fifo_write_user_id;
 
   for (int i = 0; i < num_channels; i++)
   {
@@ -100,6 +115,12 @@ reducer_tuple_fifo_t* Fifo(int num_channels, int buf_depth)
       printf("ERROR (fifo.c): initializing mutex\n");
       exit(0);
     }
+  }
+
+  if (pthread_mutex_init(&fifo->_mutex_chmap, NULL) != 0)
+  {
+    printf("ERROR (fifo.c): initializing chmap mutex\n");
+    exit(0);
   }
 
   return fifo;
@@ -210,4 +231,40 @@ int copy_reducer_tuple(reducer_tuple_in_t* copy, reducer_tuple_in_t* orig)
   strncpy(copy->userid, orig->userid, LEN_USER_ID);
   copy->weight = orig->weight;
   return 0;
+}
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: fifo_get_user_channel
+ * Search for the channel of the user id passed. If one is not
+ * found, this function will map the userid to the next available
+ * channel.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+*/
+int fifo_get_user_channel(char* userid)
+{
+  // lock dictionary
+  // find channel with matching user id
+  // unlock dictionary
+  return -1;
+}
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: fifo_read_user_id / fifo_write_user_id
+ * Abstraction over fifo_read/write so user application can just
+ * pass in the user id instead of finding the appropriate 
+ * channel number for the user.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+*/
+reducer_tuple_in_t* fifo_read_user_id(char* userid)
+{
+  int ch = fifo_get_user_channel(userid);
+  return fifo_read(fifo, ch);
+}
+
+int fifo_write_user_id(char* userid, reducer_tuple_in_t* tuple)
+{
+  int ch = fifo_get_user_channel(userid);
+  return fifo_write(fifo, ch, tuple);
 }
