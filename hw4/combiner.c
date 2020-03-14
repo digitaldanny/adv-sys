@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <stdlib.h>
@@ -19,35 +20,52 @@
 
 /*
  * ##########################################################
+ *                        STRUCTS
+ * ##########################################################
+*/
+
+// This structure will be used by all running processes to 
+// determine if the mapper has completed.
+typedef struct condition
+{
+  pthread_mutex_t mutex;
+  int flag;
+} condition_t;
+
+/*
+ * ##########################################################
  *                         GLOBALS
  * ##########################################################
- */
+*/
 
 int bufSize;
 int numWorkers;
 reducer_tuple_fifo_t* fifo;
+void* areaCondition;
+condition_t* cond;
 
 /*
  * ##########################################################
  *                        PROTOTYPES
  * ##########################################################
- */
+*/
 
 void mapper(void);
 void reducer(int idx);
+int delay(int secs);
 
 /*
  * ##########################################################
  *                         PROCESSES
  * ##########################################################
- */
+*/
 
 /*
  * SUMMARY: combiner.c
  * This program maps input tuples from stdin in mapper process to the 
  * reducer process. The mmap'd buffer is protected using an mmap'd binary
  * semaphore.
- */ 
+*/ 
 
 int main(int argc, char **argv)
 {
@@ -82,12 +100,20 @@ int main(int argc, char **argv)
   }
 
   // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
-  // create the shared buffer using an mmap.
+  // create the shared buffer / condition using an mmap.
   // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
 
   // The fifo data structure wraps the tuple-matrix and controls the 
   // mutex locks for all channels (numWorkers).
   fifo = Fifo(numWorkers, bufSize);
+
+  // init mmap'd condition for signaling reducers that mapper is complete
+  areaCondition = mmap(NULL, sizeof(condition_t), PROT_AREA, MAP_AREA, -1, 0);
+  cond = (condition_t*)areaCondition;
+
+  // initialize the mmap'd condition variable before starting all processes
+  cond->flag = 0;
+  pthread_mutex_init(&cond->mutex, NULL);
 
   // +-----+-----+-----+-----+-----+-----+-----+-----+-----+
   // start all worker threads
@@ -119,12 +145,21 @@ int main(int argc, char **argv)
     }
   }
 
-  mapper(); // parent maps inputs to worker threads
+  mapper(); // parent maps inputs to worker threads.
+
+  // tell the reducers that the mapper is complete.
+  pthread_mutex_lock(&cond->mutex);
+  cond->flag = 1;
+  pthread_mutex_unlock(&cond->mutex);
+
+  printf("MAPPER WAITING FOR CHILDREN!\n");
   
   // wait for all children to finish before exitting.
   for (int i = 0; i < numWorkers; i++)
     wait(NULL);
 
+  printf("ALL CHILDREN DONE!\n");
+  exit(0);
   return 0;
 }
 
@@ -136,30 +171,21 @@ int main(int argc, char **argv)
 void mapper(void)
 {
   // define local variables
-  //mapper_tuple_in_t* tupleIn;
+  mapper_tuple_in_t* tupleIn;
   reducer_tuple_in_t* tupleOut;
 
-  tupleOut = malloc(sizeof(reducer_tuple_in_t));
-  tupleOut->topic[0] = 'T';
-  for (int i = 0; i < numWorkers+10; i++)
-  {
-    tupleOut->userid[0] = i+31;
-    tupleOut->weight = i+1;
-    fifo->writeUser(tupleOut->userid, tupleOut);
-  }
-  free(tupleOut);
-  printf("MAPPER APPLICATION COMPLETE!!!!!!\n");
-  /*
   // read in + map more tuples until stdin is empty
   while((tupleIn = mapper_read_tuple()) != NULL)
   {
-    tupleOut = map(tupleIn);
-    while (fifo->writeUser(tupleOut->userid, tupleOut) == -1);
-    free(tupleOut);
-  }
-  */
+    // printf("Tuple read from input.txt: %.4s - %c - %.15s\n", &tupleIn->userid[0], tupleIn->action, &tupleIn->topic[0]);
+    // Map the input tuple to work with the reducer processes
+    if ((tupleOut = map(tupleIn)) == NULL)
+      printf("Error mapping tuple to reducer format.\n");
 
-  // signal condition variable
+    fifo->writeUser(tupleOut->userid, tupleOut);
+    free(tupleOut);
+    delay(1000);
+  }
 }
 
 /*
@@ -169,28 +195,32 @@ void mapper(void)
 */
 void reducer(int idx)
 {
-  printf("Reducer %d init\n", idx);
+  int mapperCompleteFlag = 0;
+  reducer_tuple_in_t* rx;
 
-  int count = 0;
-  while(1)
+  // reduce tuples from the buffer until the mapper is complete
+  // and the buffer is empty.
+  while(mapperCompleteFlag != 1 || fifo->_size[idx] > 0)
   {
-    reducer_tuple_in_t* rx = fifo->read(fifo, idx);
-    if (rx == NULL)
+    // if anything was read from the buffer, perform reduction on it.
+    if ((rx = fifo->read(fifo, idx)) != NULL)
     {
-      count++;
-      if (count == 1000000)
-      {
-        printf("Closing reducer %d\n", idx);
-        return;
-      }
-    }
-    else
-    { 
-      count = 0;
-      printf("Reading from channel %d: %d\n", idx, rx->weight);
+      printf("Read on channel %d: %.4s - %.15s - %d\n", idx, rx->userid, rx->topic, rx->weight);
       free(rx);
     }
+
+    // check if the mapper thread is complete whenever the read doesn't
+    // return anything.
+    else
+    {
+      pthread_mutex_lock(&cond->mutex);
+      mapperCompleteFlag = cond->flag;
+      pthread_mutex_unlock(&cond->mutex);
+      delay(100000); // delay avoids starvation in mapper thread
+    }
   }
+
+  printf("Buffer empty.. closing reducer %d\n", idx);
 }
 
 /*
@@ -198,3 +228,21 @@ void reducer(int idx)
  *                        FUNCTIONS
  * ##########################################################
  */
+
+/*
+ * SUMMARY: delay
+ * This function performs a software delay until specifed num
+ * of seconds.
+ *
+ * NOTE: return is counter value in attempt to avoid optimized
+ * compiler from removing the software delay.
+*/ 
+int delay (int tics) 
+{
+  int counter = 0;
+  for (int i = 0; i < tics; i++)
+  {
+    counter++;
+  }
+  return counter;
+}

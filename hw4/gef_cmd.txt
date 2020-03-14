@@ -1,5 +1,4 @@
 gef config context.layout "regs stack source threads trace"
-break *mapper
-break *reducer
+break *mapper_read_tuple 
 tmux-setup
-run 10 1
+run 10 1 < input.txt

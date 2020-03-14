@@ -22,4 +22,4 @@ fuser -k combiner
 find . -type f -exec touch {} +
 make
 #./combiner 10 3 < input.txt | tee test_output.txt
-./combiner 10 10
+./combiner 10 10 < input.txt

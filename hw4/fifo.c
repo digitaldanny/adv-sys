@@ -166,7 +166,7 @@ reducer_tuple_in_t* fifo_read(reducer_tuple_fifo_t* fifo, int ch)
   reducer_tuple_in_t* copy = (reducer_tuple_in_t*)malloc(sizeof(reducer_tuple_in_t));
 
   pthread_mutex_lock(&fifo->_mutex[ch]);
-  
+
   // only read from the buffer if it is not empty.
   if (fifo->_size[ch] > 0)
   {
@@ -306,7 +306,12 @@ int fifo_get_user_channel(char* userid)
 */
 reducer_tuple_in_t* fifo_read_user_id(char* userid)
 {
-  int ch = fifo_get_user_channel(userid);
+  int ch;
+  if ((ch = fifo_get_user_channel(userid)) == -1)
+  {
+    printf("ERROR: cannot find or add user id\n");
+    return NULL;
+  }
   return fifo_read(fifo, ch);
 }
 
@@ -316,8 +321,7 @@ int fifo_write_user_id(char* userid, reducer_tuple_in_t* tuple)
   if ((ch = fifo_get_user_channel(userid)) == -1)
   {
     printf("ERROR: Cannot find or add user id\n");
+    return -1;
   }
-  printf("Writing to channel %d\n", ch);
   return fifo_write(fifo, ch, tuple);
-  return 0;
 }
