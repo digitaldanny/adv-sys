@@ -151,14 +151,11 @@ int main(int argc, char **argv)
   pthread_mutex_lock(&cond->mutex);
   cond->flag = 1;
   pthread_mutex_unlock(&cond->mutex);
-
-  printf("MAPPER WAITING FOR CHILDREN!\n");
   
   // wait for all children to finish before exitting.
   for (int i = 0; i < numWorkers; i++)
     wait(NULL);
 
-  printf("ALL CHILDREN DONE!\n");
   exit(0);
   return 0;
 }
@@ -198,6 +195,8 @@ void reducer(int idx)
   int mapperCompleteFlag = 0;
   reducer_tuple_in_t* rx;
 
+  reducer_tuple_init(); // initialize this process' reduced tuple
+
   // reduce tuples from the buffer until the mapper is complete
   // and the buffer is empty.
   while(mapperCompleteFlag != 1 || fifo->_size[idx] > 0)
@@ -205,8 +204,8 @@ void reducer(int idx)
     // if anything was read from the buffer, perform reduction on it.
     if ((rx = fifo->read(fifo, idx)) != NULL)
     {
-      printf("Read on channel %d: %.4s - %.15s - %d\n", idx, rx->userid, rx->topic, rx->weight);
-      free(rx);
+      //printf("Read on channel %d: %.4s - %.15s - %d\n", idx, rx->userid, rx->topic, rx->weight);
+      reduce(rx);
     }
 
     // check if the mapper thread is complete whenever the read doesn't
@@ -220,7 +219,8 @@ void reducer(int idx)
     }
   }
 
-  printf("Buffer empty.. closing reducer %d\n", idx);
+  // if the process is complete, display the reduced tuple contents.
+  reducer_write_tuple();
 }
 
 /*

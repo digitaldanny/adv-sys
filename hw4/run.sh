@@ -21,5 +21,6 @@ fuser -k combiner
 ./reset.sh
 find . -type f -exec touch {} +
 make
-#./combiner 10 3 < input.txt | tee test_output.txt
-./combiner 10 10 < input.txt
+python grader.py gen
+./combiner 10 10 < input.txt | tee test_output.txt
+python grader.py grade

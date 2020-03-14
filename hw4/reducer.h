@@ -35,18 +35,26 @@ typedef struct reducer_tuple_in
 
 typedef struct reducer_tuple_out
 {
-    char userid[LEN_USER_ID];
-    char topic[LEN_TOPIC];
-    int32_t weight_total;
+  char userid[LEN_USER_ID];
+  char topic[LEN_TOPIC];
+  int32_t weight_total;
 } reducer_tuple_out_t;
+
+typedef struct node
+{
+  struct node* prev;
+  struct node* next;
+  reducer_tuple_out_t tuple;
+} node_t;
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  *                           PROTOTYPES
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
- */
+*/
 
-reducer_tuple_out_t* reduce(reducer_tuple_in_t* tuple);
-int reducer_write_tuple(reducer_tuple_in_t* tuple);
+void reducer_tuple_init(void);
+void reduce(reducer_tuple_in_t* tuple);
+void reducer_write_tuple(void);
 
 #endif

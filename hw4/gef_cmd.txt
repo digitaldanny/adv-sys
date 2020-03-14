@@ -1,4 +1,7 @@
 gef config context.layout "regs stack source threads trace"
-break *mapper_read_tuple 
+break *main
+break *reduce
+break *reducer_tuple_init
+break *reducer_write_tuple
 tmux-setup
-run 10 1 < input.txt
+run 10 10 < input.txt
