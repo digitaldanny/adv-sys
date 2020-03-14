@@ -136,9 +136,20 @@ int main(int argc, char **argv)
 void mapper(void)
 {
   // define local variables
-  mapper_tuple_in_t* tupleIn;
+  //mapper_tuple_in_t* tupleIn;
   reducer_tuple_in_t* tupleOut;
 
+  tupleOut = malloc(sizeof(reducer_tuple_in_t));
+  tupleOut->topic[0] = 'T';
+  for (int i = 0; i < numWorkers+10; i++)
+  {
+    tupleOut->userid[0] = i+31;
+    tupleOut->weight = i+1;
+    fifo->writeUser(tupleOut->userid, tupleOut);
+  }
+  free(tupleOut);
+  printf("MAPPER APPLICATION COMPLETE!!!!!!\n");
+  /*
   // read in + map more tuples until stdin is empty
   while((tupleIn = mapper_read_tuple()) != NULL)
   {
@@ -146,6 +157,7 @@ void mapper(void)
     while (fifo->writeUser(tupleOut->userid, tupleOut) == -1);
     free(tupleOut);
   }
+  */
 
   // signal condition variable
 }
@@ -157,7 +169,7 @@ void mapper(void)
 */
 void reducer(int idx)
 {
-  printf("Reducer %d - reading fifo\n", idx);
+  printf("Reducer %d init\n", idx);
 
   int count = 0;
   while(1)
@@ -166,8 +178,11 @@ void reducer(int idx)
     if (rx == NULL)
     {
       count++;
-      if (count == 100000)
+      if (count == 1000000)
+      {
+        printf("Closing reducer %d\n", idx);
         return;
+      }
     }
     else
     { 

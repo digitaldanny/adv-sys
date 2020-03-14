@@ -65,7 +65,10 @@ typedef struct reducer_tuple_fifo
   pthread_mutex_t* _mutex;
   reducer_tuple_in_t* _tuple;
   channel_map_t* _chmap;
+
   pthread_mutex_t _mutex_chmap;
+  int num_channels;
+  int num_channels_used;
 
 } reducer_tuple_fifo_t;
 

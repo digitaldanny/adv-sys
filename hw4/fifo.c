@@ -77,12 +77,12 @@ reducer_tuple_fifo_t* Fifo(int num_channels, int buf_depth)
                     -1, 0);
   fifoChmap = (channel_map_t*)areaChmap;
 
-
   // Instantiate area for FIFO attributes
   areaDepth = mmap(NULL, num_channels*sizeof(int), PROT_AREA, MAP_AREA, -1, 0);
   areaSize = mmap(NULL, num_channels*sizeof(int), PROT_AREA, MAP_AREA, -1, 0);
   areaWrindex = mmap(NULL, num_channels*sizeof(int), PROT_AREA, MAP_AREA, -1, 0);
   areaRdindex = mmap(NULL, num_channels*sizeof(int), PROT_AREA, MAP_AREA, -1, 0);
+  
   fifo->_depth = (int*)areaDepth;
   fifo->_size = (int*)areaSize;
   fifo->_rdindex = (int*)areaRdindex;
@@ -93,18 +93,31 @@ reducer_tuple_fifo_t* Fifo(int num_channels, int buf_depth)
   fifo->_tuple = tupleMatrix;
   fifo->_mutex = mutexArray;
   fifo->_chmap = fifoChmap;
+
+  // Connect FIFO functions
   fifo->read = &fifo_read;
   fifo->write = &fifo_write;
   fifo->getUserChannel = &fifo_get_user_channel;
   fifo->readUser = &fifo_read_user_id;
   fifo->writeUser = &fifo_write_user_id;
 
+  // initialize fifo parameters
+  fifo->num_channels = num_channels;
+  fifo->num_channels_used = 0;
   for (int i = 0; i < num_channels; i++)
   {
     fifo->_wrindex[i] = 0;
     fifo->_rdindex[i] = 0;
     fifo->_depth[i] = buf_depth;
     fifo->_size[i] = 0;
+  }
+
+  // initialize dictionary so that it is not mapping any user ids
+  // to channels.
+  for (int i = 0; i < num_channels; i++)
+  {
+    strncpy(fifo->_chmap[i].userid, "\0\0\0\0", LEN_USER_ID);
+    fifo->_chmap[i].channel = -1;
   }
 
   // make sure all mutexes are unlocked
@@ -239,14 +252,48 @@ int copy_reducer_tuple(reducer_tuple_in_t* copy, reducer_tuple_in_t* orig)
  * Search for the channel of the user id passed. If one is not
  * found, this function will map the userid to the next available
  * channel.
+ *
+ * RETURN: 0+ = channel number, -1 error
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 */
 int fifo_get_user_channel(char* userid)
 {
-  // lock dictionary
-  // find channel with matching user id
-  // unlock dictionary
-  return -1;
+  int ch = 0;
+
+  pthread_mutex_lock(&fifo->_mutex_chmap);
+
+  // check if there is still enough room to add another channel.
+  if (fifo->num_channels_used == fifo->num_channels)
+  {
+    printf("ERROR: adding new user when max number of channels in use.\n");
+    pthread_mutex_unlock(&fifo->_mutex_chmap);
+    return -1;
+  }
+
+  // scan through channel map to see if the user id exists there.
+  for (int i = 0; i < fifo->num_channels; i++)
+  {
+    // This portion of the array has not been defined yet. The user 
+    // does not exist yet, so add it to the end.
+    if (strncmp(fifo->_chmap[i].userid, "\0\0\0\0", LEN_USER_ID) == 0)
+    {
+      strncpy(fifo->_chmap[i].userid, userid, LEN_USER_ID);
+      fifo->_chmap[i].channel = i;
+      fifo->num_channels_used++;
+      ch = i;
+      break;
+    }
+
+    // If a user id match is found, return the channel number.
+    else if (strncmp(fifo->_chmap[i].userid, userid, LEN_USER_ID) == 0)
+    {
+      ch = i;
+      break;
+    }
+  }
+
+  pthread_mutex_unlock(&fifo->_mutex_chmap);
+  return ch;
 }
 
 /*
@@ -265,6 +312,12 @@ reducer_tuple_in_t* fifo_read_user_id(char* userid)
 
 int fifo_write_user_id(char* userid, reducer_tuple_in_t* tuple)
 {
-  int ch = fifo_get_user_channel(userid);
+  int ch;
+  if ((ch = fifo_get_user_channel(userid)) == -1)
+  {
+    printf("ERROR: Cannot find or add user id\n");
+  }
+  printf("Writing to channel %d\n", ch);
   return fifo_write(fifo, ch, tuple);
+  return 0;
 }
