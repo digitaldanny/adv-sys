@@ -174,14 +174,19 @@ void mapper(void)
   // read in + map more tuples until stdin is empty
   while((tupleIn = mapper_read_tuple()) != NULL)
   {
-    // printf("Tuple read from input.txt: %.4s - %c - %.15s\n", &tupleIn->userid[0], tupleIn->action, &tupleIn->topic[0]);
+    //printf("Tuple read from input.txt: %.4s - %c - %.15s\n", &tupleIn->userid[0], tupleIn->action, &tupleIn->topic[0]);
     // Map the input tuple to work with the reducer processes
     if ((tupleOut = map(tupleIn)) == NULL)
       printf("Error mapping tuple to reducer format.\n");
 
-    fifo->writeUser(tupleOut->userid, tupleOut);
+    // continue to write to the fifo until it is successful
+    while(fifo->writeUser(tupleOut->userid, tupleOut) == -1)
+    {
+      delay(10);
+    }
+
     free(tupleOut);
-    delay(1000);
+    delay(10);
   }
 }
 
@@ -199,8 +204,11 @@ void reducer(int idx)
 
   // reduce tuples from the buffer until the mapper is complete
   // and the buffer is empty.
+  pthread_mutex_lock(&fifo->_mutex[idx]);
   while(mapperCompleteFlag != 1 || fifo->_size[idx] > 0)
   {
+    pthread_mutex_unlock(&fifo->_mutex[idx]);
+
     // if anything was read from the buffer, perform reduction on it.
     if ((rx = fifo->read(fifo, idx)) != NULL)
     {
@@ -212,12 +220,16 @@ void reducer(int idx)
     // return anything.
     else
     {
-      pthread_mutex_lock(&cond->mutex);
+      //pthread_mutex_lock(&cond->mutex);
       mapperCompleteFlag = cond->flag;
-      pthread_mutex_unlock(&cond->mutex);
-      delay(100000); // delay avoids starvation in mapper thread
+      //pthread_mutex_unlock(&cond->mutex);
+      delay(3733);
     }
+
+    delay(17); // delay avoids starvation in mapper thread
+    pthread_mutex_lock(&fifo->_mutex[idx]);
   }
+  pthread_mutex_unlock(&fifo->_mutex[idx]);
 
   // if the process is complete, display the reduced tuple contents.
   reducer_write_tuple();
@@ -242,7 +254,8 @@ int delay (int tics)
   int counter = 0;
   for (int i = 0; i < tics; i++)
   {
-    counter++;
+    for (int j = 0; j < tics; j++)
+      counter++;
   }
   return counter;
 }

@@ -184,8 +184,8 @@ reducer_tuple_in_t* fifo_read(reducer_tuple_fifo_t* fifo, int ch)
   // if the buffer is empty, deallocate the return tuple and return NULL.
   else
   {
-    free(copy);
     pthread_mutex_unlock(&fifo->_mutex[ch]);
+    free(copy);
     return NULL;
   }
 
@@ -262,14 +262,6 @@ int fifo_get_user_channel(char* userid)
 
   pthread_mutex_lock(&fifo->_mutex_chmap);
 
-  // check if there is still enough room to add another channel.
-  if (fifo->num_channels_used == fifo->num_channels)
-  {
-    printf("ERROR: adding new user when max number of channels in use.\n");
-    pthread_mutex_unlock(&fifo->_mutex_chmap);
-    return -1;
-  }
-
   // scan through channel map to see if the user id exists there.
   for (int i = 0; i < fifo->num_channels; i++)
   {
@@ -277,6 +269,14 @@ int fifo_get_user_channel(char* userid)
     // does not exist yet, so add it to the end.
     if (strncmp(fifo->_chmap[i].userid, "\0\0\0\0", LEN_USER_ID) == 0)
     {
+      // check if there is still enough room to add another channel.
+      if (fifo->num_channels_used == fifo->num_channels)
+      {
+        printf("ERROR: adding new user when max number of channels in use.\n");
+        pthread_mutex_unlock(&fifo->_mutex_chmap);
+        return -1;
+      }
+
       strncpy(fifo->_chmap[i].userid, userid, LEN_USER_ID);
       fifo->_chmap[i].channel = i;
       fifo->num_channels_used++;

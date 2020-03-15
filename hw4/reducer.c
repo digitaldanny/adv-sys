@@ -6,9 +6,9 @@
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
 */
 
-node_t* root;
-int numTuples;
-int process_was_used;
+static node_t* root;
+static int numTuples;
+static int process_was_used;
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -36,6 +36,7 @@ void reducer_tuple_init(void)
 */
 void reducer_write_tuple(void)
 {
+  //printf("Entered reducer_write_tuple\n");
   node_t* node = root;
   reducer_tuple_out_t* t;
 
