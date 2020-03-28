@@ -1,0 +1,5 @@
+CFLAGS = -Wall
+OBJ = HelloDriver.o
+	
+HelloDriver: $(OBJ)
+	gcc -g -pthread $(CFLAGS) -o $@ $^
