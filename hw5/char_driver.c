@@ -258,7 +258,7 @@ static int mycdrv_release(struct inode *inode, struct file *file)
  * SUMMARY: mycdrv_read
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 */
-static ssize_t mycdrv_read(struct file *file, char __user * buf, size_t lbuf, loff_t * ppos)
+static ssize_t mycdrv_read(struct file *file, char __user * buf, size_t count, loff_t * ppos)
 {
 	int nbytes = 0;
 	ASP_mycdrv_t* p;
@@ -267,7 +267,7 @@ static ssize_t mycdrv_read(struct file *file, char __user * buf, size_t lbuf, lo
 	down_interruptible(&p->sem);
 
 	// check if the user is trying to read past end of the device
-	if ((lbuf + *ppos) > p->ramsize) 
+	if ((count + *ppos) > p->ramsize) 
 	{
 		pr_info("trying to read past end of device,"
 			"aborting because this is just a stub!\n");
@@ -275,8 +275,9 @@ static ssize_t mycdrv_read(struct file *file, char __user * buf, size_t lbuf, lo
 	}
 
 	// copy data from kernel space to user space
-	nbytes = lbuf - copy_to_user(buf, p->ramdisk + *ppos, lbuf);
+	nbytes = count - copy_to_user(buf, p->ramdisk + *ppos, count);
 	*ppos += nbytes;
+
 	up(&p->sem);
 
 	pr_info("\n READING function, nbytes=%d, pos=%d\n", nbytes, (int)*ppos);
@@ -288,7 +289,7 @@ static ssize_t mycdrv_read(struct file *file, char __user * buf, size_t lbuf, lo
  * SUMMARY: mycdrv_write
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 */
-static ssize_t mycdrv_write(struct file *file, const char __user * buf, size_t lbuf, loff_t * ppos)
+static ssize_t mycdrv_write(struct file *file, const char __user * buf, size_t count, loff_t * ppos)
 {
 	int nbytes = 0;
 	ASP_mycdrv_t* p;
@@ -297,7 +298,7 @@ static ssize_t mycdrv_write(struct file *file, const char __user * buf, size_t l
 	down_interruptible(&p->sem);
 
 	// check if the user is trying to write past end of the device
-	if ((lbuf + *ppos) > p->ramsize) 
+	if ((count + *ppos) > p->ramsize) 
 	{
 		pr_info("trying to read past end of device,"
 			"aborting because this is just a stub!\n");
@@ -305,8 +306,9 @@ static ssize_t mycdrv_write(struct file *file, const char __user * buf, size_t l
 	}
 
 	// copy data from user space into kernel space
-	nbytes = lbuf - copy_from_user(p->ramdisk + *ppos, buf, lbuf);
+	nbytes = count - copy_from_user(p->ramdisk + *ppos, buf, count);
 	*ppos += nbytes;
+
 	up(&p->sem);
 
 	pr_info("\n WRITING function, nbytes=%d, pos=%d\n", nbytes, (int)*ppos);
@@ -324,8 +326,8 @@ static ssize_t mycdrv_write(struct file *file, const char __user * buf, size_t l
 static loff_t mycdrv_llseek(struct file *file, loff_t off, int whence)
 {
 	ASP_mycdrv_t* p;
-	char* temp;
-	size_t origSize, i;
+	char* newRamdisk;
+	size_t origSize, newSize, i;
 
 	// acquire device lock
 	p = (ASP_mycdrv_t*)file->private_data;
@@ -349,23 +351,32 @@ static loff_t mycdrv_llseek(struct file *file, loff_t off, int whence)
 			pr_info("NOTICE (mycdrv_llseek): Reallocating device size.\n");
 			file->f_pos = ramdisk_size + off - 1;
 
-			// COME BACK TO REALLOC (stdlib cannot be found)
-			/*
 			// reallocate the ramdisk size
+			// 1.) Kzalloc new size memory range with all values init to 0
+			// 2.) Copy data over from original ramdisk
+			// 3.) Free the original ramdisk
+			// 4.) Reassign ramdisk to new ramdisk + ramsize
 			origSize = p->ramsize;
-			p->ramsize += off;
-			if ((temp = (char*)realloc((void*)p->ramdisk, p->ramsize)) != NULL)
-			{
-				p->ramdisk = temp; // only point to new memory if reallocation was successful
-			}
+			newSize = p->ramsize + off*sizeof(char);
 
-			// fill new, unused positions with 0's
-			for (i = origSize; i < p->ramsize; i++)
+			// 1.
+			if ((newRamdisk = (char*)kzalloc(newSize, GFP_KERNEL)) != NULL)
 			{
-				p->ramdisk[i] = 0;
+				// 2.
+				for (i = 0; i < origSize; i++)
+					newRamdisk[i] = p->ramdisk[i];
+
+				// 3.
+				kfree(p->ramdisk);
+
+				// 4.
+				p->ramdisk = newRamdisk;
+				p->ramsize = newSize;
 			}
-			*/
-			
+			else
+			{
+				pr_info("ERROR (llseek): Could not reallocate memory.\n");
+			}
 			break;
 
 		default:

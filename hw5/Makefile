@@ -22,6 +22,7 @@ clean:
 # Otherwise KERNELRELEASE is defined; we've been invoked from the
 # kernel build system and can use its language.
 else
-	obj-m += mycdrv.o
-	mycdrv-y := char_driver.o
+	obj-m += char_driver.o
+	#obj-m += mycdrv.o
+	#mycdrv-y := char_driver.o
 endif
