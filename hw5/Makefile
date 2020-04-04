@@ -1,13 +1,26 @@
 
-obj-m := char_driver.o
+# if KERNELRELEASE is not defined, we've been called directly from the command line.
+# Invoke the kernel build system.
+ifeq (${KERNELRELEASE},)
+	KERNEL_SOURCE := /usr/src/linux-headers-$(shell uname -r)
+	PWD := $(shell pwd)
 
-KERNEL_DIR = /usr/src/linux-headers-$(shell uname -r)
+all: driver app clean
 
-all:
-	$(MAKE) -C $(KERNEL_DIR) SUBDIRS=$(shell pwd)
-	
+driver:
+	@echo "\n========= building driver ==========\n"
+	${MAKE} -C ${KERNEL_SOURCE} M=${PWD} modules
+
 app: 
+	@echo "\n========= building userapp =========n"
 	gcc -o userapp userapp.c
 
 clean:
-	rm -rf *.o *.ko *.mod.* *.symvers *.order *~
+	@echo "\n============= cleaning =============\n"
+	${MAKE} -C ${KERNEL_SOURCE} M=${PWD} clean
+
+# Otherwise KERNELRELEASE is defined; we've been invoked from the
+# kernel build system and can use its language.
+else
+	obj-m := char_driver.o
+endif
