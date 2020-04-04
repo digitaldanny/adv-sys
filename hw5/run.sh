@@ -1,8 +1,8 @@
 #!/bin/bash
 # +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 # SUMMARY: run.sh 
-# This script builds the combiner program, runs it, and outputs
-# the resulting tuples to the test_ouput.txt file.
+# This script builds and installs character device driver, 
+# runs the test user application, and uninstalls the driver.
 # +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 # NOTE:
 # This script touches all files so there is no clock skew issues
@@ -25,9 +25,9 @@ make
 insmod mycdrv.ko
 
 # run user application for testing
-echo "Running user application"
-./userapp 0
+#echo "Running user application"
+#./userapp 0
 
 # Uninstall device driver
-echo "Uninstalling device driver"
-rmmod mycdrv.ko
+#echo "Uninstalling device driver"
+#rmmod mycdrv.ko

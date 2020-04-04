@@ -4,6 +4,7 @@
 #include <linux/init.h>		/* module_init, module_exit */
 #include <linux/slab.h>		/* kmalloc */
 #include <linux/cdev.h>		/* cdev utilities */
+#include <linux/moduleparam.h> /* moduleparam */
 
 /*
  * *************************************************************************
@@ -24,7 +25,7 @@
 */
 
 typedef struct ASP_mycdrv {
-	struct cdev dev;
+	struct cdev cdev;
 	char *ramdisk;
 	struct semaphore sem;
 	int devNo;
@@ -36,16 +37,13 @@ typedef struct ASP_mycdrv {
  * *************************************************************************
 */
 
-/*
-static dev_t first;
-static unsigned int count = 1;
-static int my_major = 500, my_minor = 0;
-*/
-static ASP_mycdrv_t *dev; // array of devices
+ASP_mycdrv_t* device; 		// array of devices
+dev_t first; 				// will contain major number + FIRST assigned minor number
+int major; 					// for easily finding device id for each minor number
+struct class* device_class; // blueprint struct for making variable number of devices
 
 // Module parameter defaults
 int NUM_DEVICES = 3; 	// Max number of devices.
-int COUNT = 1; 			// Current number of devices.
 int MAJOR = 500;
 int MINOR = 0;
 
@@ -59,6 +57,8 @@ static int mycdrv_open(struct inode *inode, struct file *file);
 static int mycdrv_release(struct inode *inode, struct file *file);
 static ssize_t mycdrv_read(struct file *file, char __user * buf, size_t lbuf, loff_t * ppos);
 static ssize_t mycdrv_write(struct file *file, const char __user * buf, size_t lbuf, loff_t * ppos);
+static loff_t mycdrv_llseek(struct file *filp, loff_t off, int whence);
+static long mycdrv_ioctl(struct file *filp, unsigned int cmd, unsigned long dir);
 static int __init my_init(void);
 static void __exit my_exit(void);
 
@@ -76,6 +76,9 @@ static const struct file_operations mycdrv_fops =
 	.write = mycdrv_write,
 	.open = mycdrv_open,
 	.release = mycdrv_release,
+	.llseek = mycdrv_llseek,
+	.unlocked_ioctl = mycdrv_ioctl,
+	.compat_ioctl = mycdrv_ioctl,
 };
 
 // module init+exit
@@ -106,19 +109,47 @@ MODULE_LICENSE("GPL v2");
 */
 static int __init my_init(void)
 {
-	/*
-	ramdisk = kmalloc(ramdisk_size, GFP_KERNEL);
-	first = MKDEV(my_major, my_minor);
-	register_chrdev_region(first, count, MYDEV_NAME);
-	my_cdev = cdev_alloc();
-	cdev_init(my_cdev, &mycdrv_fops);
-	cdev_add(my_cdev, first, count);
-	pr_info("\nSucceeded in registering character device %s\n", MYDEV_NAME);
-	*/
+	int i; 						 // making drivers c89/c90 compliant
+	unsigned int baseMinor 	= 0; // first of the requested range of minor numbers
 
-	// get dynamic major number and get a range of minor numbers
+	// get range of minor numbers and dynamic major number.
+	if (alloc_chrdev_region(&first, baseMinor, NUM_DEVICES, MYDEV_NAME) != 0)
+	{
+		pr_info("ERROR (mycdrv): Could not create dynamic major number.\n");
+		return -1;
+	}
+	major = MAJOR(first); // for easily finding device id (dev_t) of each minor number
+
+	// create class for instantiating variable number of devices.
+	if ((device_class = class_create(THIS_MODULE, MYDEV_NAME)) == NULL)
+	{
+		pr_info("ERROR (mycdrv): Class creation failed.\n");
+		return -1;
+	}
+
+	// allocate and zero space for the variable number of devices.
+	device = (ASP_mycdrv_t*)kzalloc(NUM_DEVICES*sizeof(ASP_mycdrv_t), GFP_KERNEL);
 	
+	// allocate ramdisk space and create device nodes for total number of devices (init all cdevs)
+	for (i = 0; i < NUM_DEVICES; i++)
+	{
+		dev_t devId = MKDEV(major, i); // find device id based on major and minor number (provided to mknod)
+		ASP_mycdrv_t* d = &device[i];
+		d->cdev.owner = THIS_MODULE;
+		d->cdev.ops = &mycdrv_fops;
+		d->devNo = i;
+		d->ramdisk = (char*)kzalloc(ramdisk_size, GFP_KERNEL);
+		sema_init(&d->sem, 1); // binary semaphore = mutex
+		cdev_add(&d->cdev, devId, 1);
 
+		/*
+		 * Create device with following configurations:
+		 * Parent Device = None
+		 * Device name = mycdrv[deviceNo]
+		*/
+		device_create(device_class, NULL, devId, NULL, MYDEV_NAME "%d", i);
+		pr_info("\nSucceeded in registering character device %s%d\n", MYDEV_NAME, i);
+	}
 	return 0;
 }
 
@@ -137,6 +168,25 @@ static void __exit my_exit(void)
 	pr_info("\ndevice unregistered\n");
 	kfree(ramdisk);
 	*/
+	int i;
+
+	// deallocate each device's ramdisk, cdev, and device
+	for (i = 0; i < NUM_DEVICES; i++)
+	{
+		ASP_mycdrv_t* d = &device[i];
+		kfree(&d->ramdisk);
+		cdev_del(&d->cdev);
+		device_destroy(device_class, MKDEV(major, i));
+	}
+
+	// deallocate the devices
+	kfree(device);
+
+	// destroy the device class
+	class_destroy(device_class);
+
+	// unregister the device region for all minor numbers
+	unregister_chrdev_region(first, NUM_DEVICES);
 }
 
 /*
@@ -168,7 +218,7 @@ static int mycdrv_release(struct inode *inode, struct file *file)
 */
 static ssize_t mycdrv_read(struct file *file, char __user * buf, size_t lbuf, loff_t * ppos)
 {
-	int nbytes;
+	int nbytes = 0;
 
 	/*
 	if ((lbuf + *ppos) > ramdisk_size) {
@@ -191,7 +241,7 @@ static ssize_t mycdrv_read(struct file *file, char __user * buf, size_t lbuf, lo
 */
 static ssize_t mycdrv_write(struct file *file, const char __user * buf, size_t lbuf, loff_t * ppos)
 {
-	int nbytes;
+	int nbytes = 0;
 	
 	/*
 	if ((lbuf + *ppos) > ramdisk_size) {
@@ -205,4 +255,24 @@ static ssize_t mycdrv_write(struct file *file, const char __user * buf, size_t l
 	*/
 
 	return nbytes;
+}
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: mycdrv_llseek
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+*/
+static loff_t mycdrv_llseek(struct file *filp, loff_t off, int whence)
+{
+	return 0;
+}
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: mycdrv_ioctl
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+*/
+static long mycdrv_ioctl(struct file *filp, unsigned int cmd, unsigned long dir)
+{
+	return 0;
 }
