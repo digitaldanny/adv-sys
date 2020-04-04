@@ -13,7 +13,7 @@
 */
 
 #define MYDEV_NAME "mycdrv"
-#define ramdisk_size (size_t) (16 * PAGE_SIZE) // ramdisk size 
+#define ramdisk_size (size_t) (16 * PAGE_SIZE) // default ramdisk size 
 
 #define CDRV_IOC_MAGIC 'Z'
 #define ASP_CLEAR_BUF _IOW(CDRV_IOC_MAGIC, 1, int)
@@ -31,6 +31,7 @@
 typedef struct ASP_mycdrv {
 	struct cdev cdev;
 	char* ramdisk;
+	size_t ramsize;
 	struct semaphore sem;
 	int devNo;
 	int count;
@@ -144,6 +145,7 @@ static int __init my_init(void)
 		// define the cdev + device parameters
 		d->cdev.owner = THIS_MODULE;
 		cdev_init(&d->cdev, &mycdrv_fops);
+		d->ramsize = ramdisk_size;
 		d->count = 0;
 		d->devNo = i;
 		d->ramdisk = (char*)kzalloc(ramdisk_size, GFP_KERNEL);
@@ -262,9 +264,10 @@ static ssize_t mycdrv_read(struct file *file, char __user * buf, size_t lbuf, lo
 	ASP_mycdrv_t* p;
 
 	p = (ASP_mycdrv_t*)file->private_data;
+	down_interruptible(&p->sem);
 
 	// check if the user is trying to read past end of the device
-	if ((lbuf + *ppos) > ramdisk_size) 
+	if ((lbuf + *ppos) > p->ramsize) 
 	{
 		pr_info("trying to read past end of device,"
 			"aborting because this is just a stub!\n");
@@ -272,7 +275,6 @@ static ssize_t mycdrv_read(struct file *file, char __user * buf, size_t lbuf, lo
 	}
 
 	// copy data from kernel space to user space
-	down_interruptible(&p->sem);
 	nbytes = lbuf - copy_to_user(buf, p->ramdisk + *ppos, lbuf);
 	*ppos += nbytes;
 	up(&p->sem);
@@ -292,9 +294,10 @@ static ssize_t mycdrv_write(struct file *file, const char __user * buf, size_t l
 	ASP_mycdrv_t* p;
 
 	p = (ASP_mycdrv_t*)file->private_data;
-	
+	down_interruptible(&p->sem);
+
 	// check if the user is trying to write past end of the device
-	if ((lbuf + *ppos) > ramdisk_size) 
+	if ((lbuf + *ppos) > p->ramsize) 
 	{
 		pr_info("trying to read past end of device,"
 			"aborting because this is just a stub!\n");
@@ -302,7 +305,6 @@ static ssize_t mycdrv_write(struct file *file, const char __user * buf, size_t l
 	}
 
 	// copy data from user space into kernel space
-	down_interruptible(&p->sem);
 	nbytes = lbuf - copy_from_user(p->ramdisk + *ppos, buf, lbuf);
 	*ppos += nbytes;
 	up(&p->sem);
@@ -314,10 +316,66 @@ static ssize_t mycdrv_write(struct file *file, const char __user * buf, size_t l
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  * SUMMARY: mycdrv_llseek
+ * This function changes the character device's pointer to requested
+ * origin + offset. If the origin + offset is larger than the device's
+ * current size, the device memory is reallocated to make room.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 */
-static loff_t mycdrv_llseek(struct file *filp, loff_t off, int whence)
+static loff_t mycdrv_llseek(struct file *file, loff_t off, int whence)
 {
+	ASP_mycdrv_t* p;
+	char* temp;
+	size_t origSize, i;
+
+	// acquire device lock
+	p = (ASP_mycdrv_t*)file->private_data;
+	down_interruptible(&p->sem);
+	
+	// adjust the file's position value based on the whence value
+	switch(whence)
+	{
+		case LSEEK_ORIGIN_BEGIN:
+			// set the cursor to the beginning of the device + offset 
+			file->f_pos = 0 + off;
+			break;
+
+		case LSEEK_ORIGIN_CURRENT:
+			// set the cursor to the current cursor position + offset
+			file->f_pos += off;
+			break;
+
+		case LSEEK_ORIGIN_END:
+			// set the cursor to the end of file + offset
+			pr_info("NOTICE (mycdrv_llseek): Reallocating device size.\n");
+			file->f_pos = ramdisk_size + off - 1;
+
+			// COME BACK TO REALLOC (stdlib cannot be found)
+			/*
+			// reallocate the ramdisk size
+			origSize = p->ramsize;
+			p->ramsize += off;
+			if ((temp = (char*)realloc((void*)p->ramdisk, p->ramsize)) != NULL)
+			{
+				p->ramdisk = temp; // only point to new memory if reallocation was successful
+			}
+
+			// fill new, unused positions with 0's
+			for (i = origSize; i < p->ramsize; i++)
+			{
+				p->ramdisk[i] = 0;
+			}
+			*/
+			
+			break;
+
+		default:
+			pr_info("ERROR (mycdrv_llseek): Invalid offset or seek mode.\n");
+			break;
+	}
+
+	// release device lock
+	up(&p->sem);
+
 	return 0;
 }
 
@@ -326,7 +384,7 @@ static loff_t mycdrv_llseek(struct file *filp, loff_t off, int whence)
  * SUMMARY: mycdrv_ioctl
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 */
-static long mycdrv_ioctl(struct file *filp, unsigned int cmd, unsigned long dir)
+static long mycdrv_ioctl(struct file *file, unsigned int cmd, unsigned long dir)
 {
 	return 0;
 }
