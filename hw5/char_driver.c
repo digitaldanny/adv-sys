@@ -382,9 +382,30 @@ static loff_t mycdrv_llseek(struct file *file, loff_t off, int whence)
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  * SUMMARY: mycdrv_ioctl
+ * This function resets device memory and places file offset to 0.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 */
 static long mycdrv_ioctl(struct file *file, unsigned int cmd, unsigned long dir)
 {
+	ASP_mycdrv_t* p;
+	p = (ASP_mycdrv_t*)file->private_data;
+
+	switch(cmd)
+	{
+		case ASP_CLEAR_BUF:
+			// Reset device memory and set position to 0.
+			pr_info("NOTICE: Clearing device memory.\n");
+			down_interruptible(&p->sem);
+			memset((void *)p->ramdisk, 0, p->ramsize);
+			file->f_pos = 0;
+			up(&p->sem);
+			break;
+		
+		default:
+			// Undefined command returns error.
+			pr_info("ERROR (mycdrv_ioctl): Invalid cmd flag.\n");
+			return -1;
+	}
+
 	return 0;
 }
