@@ -29,6 +29,7 @@ typedef struct ASP_mycdrv {
 	char *ramdisk;
 	struct semaphore sem;
 	int devNo;
+	int count;
 } ASP_mycdrv_t;
 
 /*
@@ -138,7 +139,8 @@ static int __init my_init(void)
 
 		// define the cdev + device parameters
 		d->cdev.owner = THIS_MODULE;
-		d->cdev.ops = &mycdrv_fops;
+		cdev_init(&d->cdev, &mycdrv_fops);
+		d->count = 0;
 		d->devNo = i;
 		d->ramdisk = (char*)kzalloc(ramdisk_size, GFP_KERNEL);
 		sema_init(&d->sem, 1); // binary semaphore = mutex
@@ -176,7 +178,7 @@ static void __exit my_exit(void)
 		pr_info("NOTICE: Free ramdisk for device %d\n", i);
 	
 		device_destroy(device_class, MKDEV(major, i));
-		pr_info("NOTICE: Destroyed device %d\n", i);
+		pr_info("NOTICE: Destroyed device node %d\n", i);
 
 
 		cdev_del(&d->cdev);
@@ -199,22 +201,49 @@ static void __exit my_exit(void)
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  * SUMMARY: mycdrv_open
+ * Point file* to appropriate device structure based on the requested
+ * inode number.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 */
 static int mycdrv_open(struct inode *inode, struct file *file)
 {
-	pr_info(" OPENING device: %s:\n\n", MYDEV_NAME);
+	ASP_mycdrv_t* p; // comply with c90 requirements
+	pr_info("Entered open function!\n");
+
+	// find the device with the same cdev as passed through the inode
+	// and assign file pointer's data to the device.
+	p = container_of(inode->i_cdev, struct ASP_mycdrv, cdev);
+	file->private_data = p;
+
+	// increment number of times device was opened (could result in data
+	// race if multiple processes try to open same device) 
+	down_interruptible(&p->sem);
+	p->count++;
+	up(&p->sem);
+
+	pr_info(" OPENED device: %s:\n\n", MYDEV_NAME);
 	return 0;
 }
 
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  * SUMMARY: mycdrv_release
+ * Decrement count for the specified device.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 */
 static int mycdrv_release(struct inode *inode, struct file *file)
 {
-	pr_info(" CLOSING device: %s:\n\n", MYDEV_NAME);
+	ASP_mycdrv_t* p; // comply with c90 requirements
+	pr_info("Entered release function!\n");
+	p = (ASP_mycdrv_t*)file->private_data;
+
+	// increment number of times device was opened (could result in data
+	// race if multiple processes try to open same device) 
+	down_interruptible(&p->sem);
+	p->count--;
+	up(&p->sem);
+
+	pr_info(" CLOSED device: %s:\n\n", MYDEV_NAME);
 	return 0;
 }
 
@@ -237,7 +266,6 @@ static ssize_t mycdrv_read(struct file *file, char __user * buf, size_t lbuf, lo
 	*ppos += nbytes;
 	pr_info("\n READING function, nbytes=%d, pos=%d\n", nbytes, (int)*ppos);
 	*/
-
 	return nbytes;
 }
 
@@ -260,7 +288,6 @@ static ssize_t mycdrv_write(struct file *file, const char __user * buf, size_t l
 	*ppos += nbytes;
 	pr_info("\n WRITING function, nbytes=%d, pos=%d\n", nbytes, (int)*ppos);
 	*/
-
 	return nbytes;
 }
 

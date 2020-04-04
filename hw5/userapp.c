@@ -31,6 +31,10 @@ int main(int argc, char *argv[]) {
 
 	// open the requested device
 	sprintf(dev_path, "%s%d", DEVICE, dev_no);
+	printf("Opening following device: ");
+	printf(dev_path, sizeof(DEVICE)+1, 0);
+	printf("\n");
+	
 	fd = open(dev_path, O_RDWR);
 	if(fd == -1) {
 		printf("File %s either does not exist or has been locked by another "

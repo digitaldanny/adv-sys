@@ -11,7 +11,7 @@
 
 # Require user to run as root
 if [ `whoami` != root ]; then
-    echo "ERROR: Please run this script as root or using sudo"
+    echo "ERROR: Please run this script as root or using sudo (sudo ./run.sh)"
     exit
 fi
 
@@ -25,8 +25,8 @@ make
 insmod mycdrv.ko
 
 # run user application for testing
-#echo "Running user application"
-#./userapp 0
+echo "Running user application"
+./userapp 0
 
 # Uninstall device driver
 echo "Uninstalling device driver"
