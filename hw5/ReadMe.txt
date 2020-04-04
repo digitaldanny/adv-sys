@@ -18,3 +18,8 @@ and follow the following steps:
 		   in /dev/ are created in the driver with root privileges.
 		   
 4) Unload module : $ sudo rmmod char_driver
+
+NOTES FROM DEVELOPER:
+
+- Device driver will be installed as char_driver.ko
+- Devices will appear in /dev/ as /dev/mycdrv0, mycdrv1, .. mycdrvN
