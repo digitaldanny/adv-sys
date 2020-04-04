@@ -1,3 +1,4 @@
+#!/bin/bash
 # +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 # SUMMARY: run.sh 
 # This script builds the combiner program, runs it, and outputs
@@ -8,10 +9,25 @@
 # with the makefile.
 # +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 
-#!/bin/bash
-#fuser -k combinr
+# Require user to run as root
+if [ `whoami` != root ]; then
+    echo "ERROR: Please run this script as root or using sudo"
+    exit
+fi
+
+# cleanup
 ./reset.sh
 find . -type f -exec touch {} +
+
+# build and install device driver
+echo "Building and installing device driver"
 make
-#sudo insmod char_driver.ko
+insmod mycdrv.ko
+
+# run user application for testing
+echo "Running user application"
 ./userapp 0
+
+# Uninstall device driver
+echo "Uninstalling device driver"
+rmmod mycdrv.ko

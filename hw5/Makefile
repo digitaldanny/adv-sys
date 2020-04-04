@@ -8,16 +8,16 @@ ifeq (${KERNELRELEASE},)
 all: driver app clean
 
 driver:
-	@echo "\n========= building driver ==========\n"
+	@echo "========= building driver =========="
 	${MAKE} -C ${KERNEL_SOURCE} M=${PWD} modules
 
 app: 
-	@echo "\n========= building userapp =========\n"
+	@echo "========= building userapp ========="
 	gcc -o userapp userapp.c
 
 .PHONY : clean
 clean:
-	@echo "\n============= cleaning =============\n"
+	@echo "============= cleaning ============="
 	$(shell find . -type f -iregex '.*\.\(tmp\|o\|mod\|cmd\|symvers\|order\|mod.*\)' -exec rm -f {} \;)
 
 # Otherwise KERNELRELEASE is defined; we've been invoked from the
