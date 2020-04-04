@@ -18,6 +18,10 @@
 #define CDRV_IOC_MAGIC 'Z'
 #define ASP_CLEAR_BUF _IOW(CDRV_IOC_MAGIC, 1, int)
 
+#define LSEEK_ORIGIN_BEGIN 		0
+#define LSEEK_ORIGIN_CURRENT 	1
+#define LSEEK_ORIGIN_END 		2
+
 /*
  * *************************************************************************
  *                                 STRUCTS
@@ -26,7 +30,7 @@
 
 typedef struct ASP_mycdrv {
 	struct cdev cdev;
-	char *ramdisk;
+	char* ramdisk;
 	struct semaphore sem;
 	int devNo;
 	int count;
@@ -255,17 +259,25 @@ static int mycdrv_release(struct inode *inode, struct file *file)
 static ssize_t mycdrv_read(struct file *file, char __user * buf, size_t lbuf, loff_t * ppos)
 {
 	int nbytes = 0;
+	ASP_mycdrv_t* p;
 
-	/*
-	if ((lbuf + *ppos) > ramdisk_size) {
+	p = (ASP_mycdrv_t*)file->private_data;
+
+	// check if the user is trying to read past end of the device
+	if ((lbuf + *ppos) > ramdisk_size) 
+	{
 		pr_info("trying to read past end of device,"
 			"aborting because this is just a stub!\n");
 		return 0;
 	}
-	nbytes = lbuf - copy_to_user(buf, ramdisk + *ppos, lbuf);
+
+	// copy data from kernel space to user space
+	down_interruptible(&p->sem);
+	nbytes = lbuf - copy_to_user(buf, p->ramdisk + *ppos, lbuf);
 	*ppos += nbytes;
+	up(&p->sem);
+
 	pr_info("\n READING function, nbytes=%d, pos=%d\n", nbytes, (int)*ppos);
-	*/
 	return nbytes;
 }
 
@@ -277,17 +289,25 @@ static ssize_t mycdrv_read(struct file *file, char __user * buf, size_t lbuf, lo
 static ssize_t mycdrv_write(struct file *file, const char __user * buf, size_t lbuf, loff_t * ppos)
 {
 	int nbytes = 0;
+	ASP_mycdrv_t* p;
+
+	p = (ASP_mycdrv_t*)file->private_data;
 	
-	/*
-	if ((lbuf + *ppos) > ramdisk_size) {
+	// check if the user is trying to write past end of the device
+	if ((lbuf + *ppos) > ramdisk_size) 
+	{
 		pr_info("trying to read past end of device,"
 			"aborting because this is just a stub!\n");
 		return 0;
 	}
-	nbytes = lbuf - copy_from_user(ramdisk + *ppos, buf, lbuf);
+
+	// copy data from user space into kernel space
+	down_interruptible(&p->sem);
+	nbytes = lbuf - copy_from_user(p->ramdisk + *ppos, buf, lbuf);
 	*ppos += nbytes;
+	up(&p->sem);
+
 	pr_info("\n WRITING function, nbytes=%d, pos=%d\n", nbytes, (int)*ppos);
-	*/
 	return nbytes;
 }
 

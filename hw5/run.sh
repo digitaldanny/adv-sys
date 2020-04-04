@@ -29,5 +29,5 @@ echo "Running user application"
 ./userapp 0
 
 # Uninstall device driver
-echo "Uninstalling device driver"
-rmmod mycdrv.ko
+#echo "Uninstalling device driver"
+#rmmod mycdrv.ko
