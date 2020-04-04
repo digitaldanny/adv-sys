@@ -1,5 +1,5 @@
-# if KERNELRELEASE is not defined, we've been called directly from the command line.
-# Invoke the kernel build system.
+## if KERNELRELEASE is not defined, we've been called directly from the command line.
+## Invoke the kernel build system.
 ifeq (${KERNELRELEASE},)
 	KERNEL_SOURCE := /usr/src/linux-headers-$(shell uname -r)
 	PWD := $(shell pwd)

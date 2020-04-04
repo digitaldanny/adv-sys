@@ -29,5 +29,5 @@ insmod mycdrv.ko
 #./userapp 0
 
 # Uninstall device driver
-#echo "Uninstalling device driver"
-#rmmod mycdrv.ko
+echo "Uninstalling device driver"
+rmmod mycdrv.ko

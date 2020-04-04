@@ -39,13 +39,12 @@ typedef struct ASP_mycdrv {
 
 ASP_mycdrv_t* device; 		// array of devices
 dev_t first; 				// will contain major number + FIRST assigned minor number
-int major; 					// for easily finding device id for each minor number
 struct class* device_class; // blueprint struct for making variable number of devices
 
 // Module parameter defaults
 int NUM_DEVICES = 3; 	// Max number of devices.
-int MAJOR = 500;
-int MINOR = 0;
+int major = 500;
+int minor = 0;
 
 /*
  * *************************************************************************
@@ -78,7 +77,6 @@ static const struct file_operations mycdrv_fops =
 	.release = mycdrv_release,
 	.llseek = mycdrv_llseek,
 	.unlocked_ioctl = mycdrv_ioctl,
-	.compat_ioctl = mycdrv_ioctl,
 };
 
 // module init+exit
@@ -87,8 +85,6 @@ module_exit(my_exit);
 
 // module parameters (all modifiable at load time)
 module_param(NUM_DEVICES, int, S_IRUGO);
-module_param(MAJOR, int, S_IRUGO);
-module_param(MINOR, int, S_IRUGO);
 
 // other module details
 MODULE_AUTHOR("Daniel Hamilton");
@@ -120,6 +116,7 @@ static int __init my_init(void)
 	}
 	major = MAJOR(first); // for easily finding device id (dev_t) of each minor number
 
+	
 	// create class for instantiating variable number of devices.
 	if ((device_class = class_create(THIS_MODULE, MYDEV_NAME)) == NULL)
 	{
@@ -135,21 +132,26 @@ static int __init my_init(void)
 	{
 		dev_t devId = MKDEV(major, i); // find device id based on major and minor number (provided to mknod)
 		ASP_mycdrv_t* d = &device[i];
+		
+		// add character device to the system
+		cdev_add(&d->cdev, devId, 1);
+
+		// define the cdev + device parameters
 		d->cdev.owner = THIS_MODULE;
 		d->cdev.ops = &mycdrv_fops;
 		d->devNo = i;
 		d->ramdisk = (char*)kzalloc(ramdisk_size, GFP_KERNEL);
 		sema_init(&d->sem, 1); // binary semaphore = mutex
-		cdev_add(&d->cdev, devId, 1);
 
-		/*
-		 * Create device with following configurations:
-		 * Parent Device = None
-		 * Device name = mycdrv[deviceNo]
-		*/
+		// Create device with following configurations:
+		// ~ Parent Device = None
+		// ~ Device name = mycdrv[deviceNo]
 		device_create(device_class, NULL, devId, NULL, MYDEV_NAME "%d", i);
+
 		pr_info("\nSucceeded in registering character device %s%d\n", MYDEV_NAME, i);
 	}
+
+	pr_info("\nWOO! Debugging installation successful!\n");
 	return 0;
 }
 
@@ -162,31 +164,36 @@ static int __init my_init(void)
 */
 static void __exit my_exit(void)
 {
-	/*
-	cdev_del(my_cdev);
-	unregister_chrdev_region(first, count);
-	pr_info("\ndevice unregistered\n");
-	kfree(ramdisk);
-	*/
 	int i;
+	pr_info("NOTICE: About to unregister device");
 
 	// deallocate each device's ramdisk, cdev, and device
 	for (i = 0; i < NUM_DEVICES; i++)
 	{
 		ASP_mycdrv_t* d = &device[i];
-		kfree(&d->ramdisk);
-		cdev_del(&d->cdev);
+
+		kfree(d->ramdisk);
+		pr_info("NOTICE: Free ramdisk for device %d\n", i);
+	
 		device_destroy(device_class, MKDEV(major, i));
+		pr_info("NOTICE: Destroyed device %d\n", i);
+
+
+		cdev_del(&d->cdev);
+		pr_info("NOTICE: Deleted cdev for device %d\n", i);
 	}
 
 	// deallocate the devices
 	kfree(device);
+	pr_info("NOTICE: Deallocated devices\n");
 
 	// destroy the device class
 	class_destroy(device_class);
+	pr_info("NOTICE: Destroyed class blueprint\n");
 
 	// unregister the device region for all minor numbers
 	unregister_chrdev_region(first, NUM_DEVICES);
+	pr_info("NOTICE: Unregistered device regions\n");
 }
 
 /*
