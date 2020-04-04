@@ -12,15 +12,17 @@ driver:
 	${MAKE} -C ${KERNEL_SOURCE} M=${PWD} modules
 
 app: 
-	@echo "\n========= building userapp =========n"
+	@echo "\n========= building userapp =========\n"
 	gcc -o userapp userapp.c
 
+.PHONY : clean
 clean:
 	@echo "\n============= cleaning =============\n"
-	${MAKE} -C ${KERNEL_SOURCE} M=${PWD} clean
+	$(shell find . -type f -iregex '.*\.\(tmp\|o\|mod\|cmd\|symvers\|order\|mod.*\)' -exec rm -f {} \;)
 
 # Otherwise KERNELRELEASE is defined; we've been invoked from the
 # kernel build system and can use its language.
 else
-	obj-m := char_driver.o
+	obj-m += mycdrv.o
+	mycdrv-y := char_driver.o
 endif

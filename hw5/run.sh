@@ -14,4 +14,4 @@
 find . -type f -exec touch {} +
 make
 #sudo insmod char_driver.ko
-#./userapp 0
+./userapp 0
