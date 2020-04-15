@@ -28,7 +28,7 @@ find . -type f -exec touch {} +
 # build and install device driver
 echo "Building and installing device driver"
 make
-#insmod mycdrv.ko
+insmod driver.ko
 
 # run user application for testing
 case "$1" in
