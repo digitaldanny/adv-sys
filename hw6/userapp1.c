@@ -10,7 +10,6 @@
 #define DEVICE "/dev/a5"
 
 #define CDRV_IOC_MAGIC 'Z'
-#define ASP_CLEAR_BUF _IOW(CDRV_IOC_MAGIC, 1, int)
 
 
 int main() 
@@ -31,6 +30,7 @@ int main()
 				"process\n", DEVICE);
 		exit(-1);
 	}
+	printf("Open 1 complete.\n");
 
     // OPEN DEVICE A SECOND TIME
     printf("Open 2.\n");
@@ -41,6 +41,7 @@ int main()
 				"process\n", DEVICE);
 		exit(-1);
 	}
+	printf("Open 2 complete.\n");
 
 	// Execution will never get this far, so there is no reason to try closing.
     printf("If you see this message, the program DID NOT deadlock.\n");

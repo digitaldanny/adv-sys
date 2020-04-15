@@ -12,19 +12,19 @@ driver:
 
 app1: 
 	@echo "========= building userapp1 ========="
-	gcc -std=c99 -pthread -o userapp1 userapp1.c
+	gcc -std=c99 -o userapp1 userapp1.c
 
 app2: 
 	@echo "========= building userapp2 ========="
-	gcc -std=c99 -pthread -o userapp2 userapp2.c
+	gcc -std=c99 -o userapp2 userapp2.c -pthread
 
 app3: 
 	@echo "========= building userapp3 ========="
-	gcc -std=c99 -pthread -o userapp3 userapp3.c
+	gcc -std=c99 -o userapp3 userapp3.c -pthread
 
 app4: 
 	@echo "========= building userapp4 ========="
-	gcc -std=c99 -pthread -o userapp4 userapp4.c
+	gcc -std=c99 -o userapp4 userapp4.c -pthread
 
 .PHONY : clean
 clean:

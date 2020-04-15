@@ -51,6 +51,7 @@ int e2_open(struct inode *inode, struct file *filp)
         return 0;
     }
     else if (devc->mode == MODE2) {
+        printk("MODE 2\n");
         devc->count2++;
     }
     up(&devc->sem1);
@@ -78,7 +79,7 @@ int e2_release(struct inode *inode, struct file *filp)
 
 static ssize_t e2_read (struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 {
-        struct e2_dev *devc = filp->private_data;
+    struct e2_dev *devc = filp->private_data;
 	ssize_t ret = 0;
 	down_interruptible(&devc->sem1);
 	if (devc->mode == MODE1) {
