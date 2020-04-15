@@ -11,6 +11,7 @@
 #include <linux/moduleparam.h>
 #include <linux/device.h>
 #include <linux/ioctl.h>
+#include <linux/uaccess.h>
 
 
 #define MYDEV_NAME "a5"
