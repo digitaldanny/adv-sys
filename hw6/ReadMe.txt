@@ -74,7 +74,8 @@ Critical region end     : Thread 1 release
 Data Accessed           : devc->ramdisk
 Locks Held at Beginning : sem2
 Possiblity of Data Race : There is possiblity of data race because the sem2 lock is being bypassed by not using the open
-	and release functions inside of thread 2.
+	and release functions inside of thread 2. Inside of the read/write functions for MODE 1, sem1 is unlocked before
+	copying data to/from the device which means the ramdisk is exposed to multiple threads.
 
 - 2.) This case is similar to the first data race case, except with multi-process usage. The parent process opens
 the device with file descriptor (fd). Then the process forks and the child process can access the device without
@@ -88,18 +89,21 @@ Locks Held at Beginning : sem2
 Possiblity of Data Race : There is possiblity of data race because the sem2 lock is being bypassed by not using the open
 	and release functions inside the child process.
 
-- 3.) ??
+- 3.) Two threads open the device in MODE 2. They both call ioctrl to set the device to MODE 1 at the same time.
 
-Critical region start   : 
-Critical region end     :
-Data Accessed           :
-Locks Held at Beginning :
-Possiblity of Data Race : 
+Critical region start   : After line 168 "down_interrruptible(&devc->sem1);" inside e2_ioctrl.
+Critical region end     : After line 184 "up(&devc->sem1);" inside e2_ioctrl.
+Data Accessed           : devc->count1, devc->count2
+Locks Held at Beginning : sem1, sem2
+Possiblity of Data Race : There is no possibility of a data race because sem1 protects count1 and count2. Locking sem2
+	will cause a deadlock; however, it does not cause any data races either.
 
-- 4.) ??
+- 4.) Main thread opens a global file descriptor (fd) in MODE 1. Threads 1 and 2 bypass the open and release functions
+and both call ioctrl to set the device into MODE 2 at the same time.
 
-Critical region start   : 
-Critical region end     :
-Data Accessed           :
-Locks Held at Beginning :
-Possiblity of Data Race : 
+Critical region start   : After line 148 "down_interrruptible(&devc->sem1);" inside e2_ioctrl.
+Critical region end     : After line 164 "up(&devc->sem1);" inside e2_ioctrl.
+Data Accessed           : devc->count1, devc->count2
+Locks Held at Beginning : sem1
+Possiblity of Data Race : There is no possiblility of a data race here either even though both threads bypass the open
+	and release functions. The sem1 lock blocks concurrent access to count1/count2 so those are protected.
