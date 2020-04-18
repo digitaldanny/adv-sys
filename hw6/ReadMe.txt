@@ -26,23 +26,40 @@ Instructions on Running
 Deadlock Cases
 ##############################################################
 
-- 1.) When running in MODE 1, only one thread can open and access devices. If the same thread
-tries to open the device twice, the device driver will get stuck on line 50 ```down_interruptible(&devc->sem2);```.
-Because the current thread has already claimed devc->sem2 (a binary semaphore), the same thread will 
-be unable to claim the semaphore again. This results in a deadlock in the main thread. The demo (userapp1)
-will infinite loop after outputting "Open 2."
+- 1.) ??
+
+Expected Terminal Output:
+
 
 - 2.) Create two threads. The first threads opens the device and sets it to MODE 2, which allows the 
 second thread to open the device also. The second thread sets to MODE 1, which causes a deadlock for
 thread 1 operation.
 
+Expected Terminal Output:
+T1: Opened device.
+T1: Set device to MODE 2.
+T2: Opened device.
+T2: Set device to MODE 1.
+
 - 3.) Create two threads. The first thread opens the device. The second thread opens the device but is blocked
 indefinitely while waiting for sem2. The first thread tries to switch to mode 2 by using ioctl(MODE_2) but is
 block indefinitely while waiting on queue 1. 
 
+Expected Terminal Output:
+T1: Opened device.
+T2: Opening device.
+T1: Switching to MODE 2.
+
 - 4.) Create two threads. The first thread opens the device and switches into mode 2 using ioctl(MODE_2). The 
 second thread opens the device successfully. Both threads try to switch to mode 1 using ioctl(MODE_1) but block
 indefinitely while waiting on queue 2.
+
+Expected Terminal Output:
+T1: Opened device.
+T1: Switched to MODE 2.
+T2: Opened device.
+T2: Switching to MODE 1.
+T1: Switching to MODE 1.
 
 ##############################################################
 Data Race Cases
@@ -57,3 +74,5 @@ is between thread 1's open and thread 1's close.
 the device with file descriptor (fd). Then the process forks and the child process can access the device without
 opening the device using fd. Again, this is a data race for the device buffer. The critical region is between
 parent process open and parent process close.
+
+- 3.)

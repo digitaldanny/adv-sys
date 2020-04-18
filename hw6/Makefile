@@ -10,19 +10,19 @@ driver:
 	@echo "========= building driver =========="
 	${MAKE} -C ${KERNEL_SOURCE} M=${PWD} modules
 
-app1: 
+userapp1: 
 	@echo "========= building userapp1 ========="
 	gcc -std=c99 -o userapp1 userapp1.c
 
-app2: 
+userapp2: 
 	@echo "========= building userapp2 ========="
 	gcc -std=c99 -o userapp2 userapp2.c -pthread
 
-app3: 
+userapp3: 
 	@echo "========= building userapp3 ========="
 	gcc -std=c99 -o userapp3 userapp3.c -pthread
 
-app4: 
+userapp4: 
 	@echo "========= building userapp4 ========="
 	gcc -std=c99 -o userapp4 userapp4.c -pthread
 
