@@ -29,7 +29,7 @@ Deadlock Cases
 - 1.) ??
 
 Expected Terminal Output:
-
+??
 
 - 2.) Create two threads. The first threads opens the device and sets it to MODE 2, which allows the 
 second thread to open the device also. The second thread sets to MODE 1, which causes a deadlock for
@@ -65,14 +65,41 @@ T1: Switching to MODE 1.
 Data Race Cases
 ##############################################################
 
-- 1.) Thread 1 opens device with global file descriptor (fd). Thread 1 starts performing reads / writes. Thread 2
-does not have to open the device because it is already opened with the global fd, so thread 2 starts performing 
-reads / writes without opening a new file descriptor. This is a data race for the device buffer. The critical region
-is between thread 1's open and thread 1's close.
+- 1.) Thread 1 opens device with global file descriptor (fd) in MODE 1. Thread 1 starts performing reads / writes. 
+Thread 2 does not have to open the device because it is already opened with the global fd, so thread 2 starts performing 
+reads / writes without opening a new file descriptor. This is a data race for the device buffer. 
+
+Critical region start   : Thread 1 open
+Critical region end     : Thread 1 release
+Data Accessed           : devc->ramdisk
+Locks Held at Beginning : sem2
+Possiblity of Data Race : There is possiblity of data race because the sem2 lock is being bypassed by not using the open
+	and release functions inside of thread 2.
 
 - 2.) This case is similar to the first data race case, except with multi-process usage. The parent process opens
 the device with file descriptor (fd). Then the process forks and the child process can access the device without
 opening the device using fd. Again, this is a data race for the device buffer. The critical region is between
 parent process open and parent process close.
 
-- 3.)
+Critical region start   : Parent process open
+Critical region end     : Parent process release
+Data Accessed           : devc->ramdisk
+Locks Held at Beginning : sem2
+Possiblity of Data Race : There is possiblity of data race because the sem2 lock is being bypassed by not using the open
+	and release functions inside the child process.
+
+- 3.) ??
+
+Critical region start   : 
+Critical region end     :
+Data Accessed           :
+Locks Held at Beginning :
+Possiblity of Data Race : 
+
+- 4.) ??
+
+Critical region start   : 
+Critical region end     :
+Data Accessed           :
+Locks Held at Beginning :
+Possiblity of Data Race : 
