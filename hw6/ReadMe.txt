@@ -36,7 +36,13 @@ will infinite loop after outputting "Open 2."
 second thread to open the device also. The second thread sets to MODE 1, which causes a deadlock for
 thread 1 operation.
 
-- 3.) 
+- 3.) Create two threads. The first thread opens the device. The second thread opens the device but is blocked
+indefinitely while waiting for sem2. The first thread tries to switch to mode 2 by using ioctl(MODE_2) but is
+block indefinitely while waiting on queue 1. 
+
+- 4.) Create two threads. The first thread opens the device and switches into mode 2 using ioctl(MODE_2). The 
+second thread opens the device successfully. Both threads try to switch to mode 1 using ioctl(MODE_1) but block
+indefinitely while waiting on queue 2.
 
 ##############################################################
 Data Race Cases
@@ -44,8 +50,10 @@ Data Race Cases
 
 - 1.) Thread 1 opens device with global file descriptor (fd). Thread 1 starts performing reads / writes. Thread 2
 does not have to open the device because it is already opened with the global fd, so thread 2 starts performing 
-reads / writes without opening a new file descriptor. This is a data race for the device buffer.
+reads / writes without opening a new file descriptor. This is a data race for the device buffer. The critical region
+is between thread 1's open and thread 1's close.
 
 - 2.) This case is similar to the first data race case, except with multi-process usage. The parent process opens
 the device with file descriptor (fd). Then the process forks and the child process can access the device without
-opening the device using fd. Again, this is a data race for the device buffer.
+opening the device using fd. Again, this is a data race for the device buffer. The critical region is between
+parent process open and parent process close.
