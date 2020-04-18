@@ -4,7 +4,7 @@ ifeq (${KERNELRELEASE},)
 	KERNEL_SOURCE := /usr/src/linux-headers-$(shell uname -r)
 	PWD := $(shell pwd)
 
-all: driver app1 app2 app3 app4 clean
+all: driver userapp1 userapp2 userapp3 userapp4 clean
 
 driver:
 	@echo "========= building driver =========="
