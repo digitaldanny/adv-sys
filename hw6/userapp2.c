@@ -48,7 +48,11 @@ int main()
     printf("Device %s\n", DEVICE);
 
     pthread_create(&threadid[0], NULL, thread1, NULL);
+    sleep(1);
+    pthread_create(&threadid[1], NULL, thread2, NULL);
+    
     pthread_join(threadid[0], NULL);
+    pthread_join(threadid[1], NULL);
 
 	// Execution will never get this far, so there is no reason to try closing.
     printf("If you see this message, the program DID NOT deadlock.\n");
@@ -69,7 +73,6 @@ void *thread1()
 	int offset, origin;
 	
     // OPEN DEVICE A FIRST TIME
-    printf("Opened device in thread 1.\n");
 	fd = open(DEVICE, O_RDWR);
 	if(fd == -1) 
     {
@@ -77,20 +80,19 @@ void *thread1()
 				"process\n", DEVICE);
 		exit(-1);
 	}
+    printf("T1: Opened device.\n");
 
     // Set device to MODE 2 so thread 2 can open the file
-    printf("Thread 1 set device to MODE 2\n");
     ioctl(fd, E2_IOCMODE2);
+    printf("T1: Set device to MODE 2\n");
 
-    // Launch thread 2, which will cause the deadlock
-    pthread_create(&threadid[1], NULL, thread2, NULL);
-    sleep(3);
+    sleep(2);
 
     // trying to write to the device should cause a deadlock
     write(fd, "Hello World", 5);
+    printf("T1: Wrote to device. If this line was o!utput there was not a deadlock!!\n");
 
     // Shouldn't be able to get this far into the program
-    pthread_join(threadid[1], NULL);
     pthread_exit(NULL);
 }
 
@@ -108,7 +110,6 @@ void *thread2()
 	int offset, origin;
 	
     // OPEN DEVICE A FIRST TIME
-    printf("Opened device in thread 2.\n");
 	fd = open(DEVICE, O_RDWR);
 	if(fd == -1) 
     {
@@ -116,11 +117,11 @@ void *thread2()
 				"process\n", DEVICE);
 		exit(-1);
 	}
+    printf("T2: Opened device.\n");
 
     // Set device to MODE 1 to cause deadlock
-    printf("Thread 2 set device to MODE 1\n");
     ioctl(fd, E2_IOCMODE1);
-    sleep(2);
+    printf("T2: Set device to MODE 1\n");
 
     pthread_exit(NULL);
 }

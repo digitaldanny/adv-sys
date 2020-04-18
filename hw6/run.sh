@@ -22,13 +22,20 @@ if [ "$#" -ne 1 ]; then
 fi
 
 # cleanup
-./reset.sh
+#./reset.sh
 find . -type f -exec touch {} +
 
 # build and install device driver
 echo "Building and installing device driver"
-make
-insmod driver.ko
+#make
+
+DEV=/dev/a5
+if [ -c "$DEV" ]; then
+    echo "$DEV already loaded."
+else 
+    echo "$DEV is not loaded. Registering now."
+    insmod driver.ko
+fi
 
 # run user application for testing
 case "$1" in
