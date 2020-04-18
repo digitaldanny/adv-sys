@@ -26,10 +26,15 @@ Instructions on Running
 Deadlock Cases
 ##############################################################
 
-- 1.) ??
+- 1.) When running in MODE 1, only one thread can open and access devices. If the same thread
+tries to open the device twice, the device driver will get stuck on line 50 ```down_interruptible(&devc->sem2);```.
+Because the current thread has already claimed devc->sem2 (a binary semaphore), the same thread will 
+be unable to claim the semaphore again. This results in a deadlock in the main thread.
 
 Expected Terminal Output:
-??
+Open 1.
+Open 1 complete.
+Open 2.
 
 - 2.) Create two threads. The first threads opens the device and sets it to MODE 2, which allows the 
 second thread to open the device also. The second thread sets to MODE 1, which causes a deadlock for

@@ -22,12 +22,12 @@ if [ "$#" -ne 1 ]; then
 fi
 
 # cleanup
-#./reset.sh
+./reset.sh
 find . -type f -exec touch {} +
 
 # build and install device driver
 echo "Building and installing device driver"
-#make
+make
 
 DEV=/dev/a5
 if [ -c "$DEV" ]; then
