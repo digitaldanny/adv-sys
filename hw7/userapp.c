@@ -59,7 +59,7 @@ struct urb
 
 struct input_dev
 {
-  int (*event) (struct input_dev *dev, unsigned int type, unsigned int code, int value);
+  void* (*event) (void*);
   int led;
   pthread_mutex_t event_lock;
 };
@@ -81,7 +81,7 @@ struct usb_kbd
 void PROC_usbkbdDriverSimulator();
 void *THREAD_usbKbdIrq(void* urb);
 void *THREAD_usbKbdLed(void* urb);
-int THREAD_usbKbdEvent(struct input_dev *dev, unsigned int type, unsigned int code, int value);
+void *THREAD_usbKbdEvent(void* value);
 void *THREAD_simSideEndpointInterrupt();
 void *THREAD_simSideEndpointControl();
 int FUNC_usbKbdOpen(struct input_dev* dev);
@@ -291,7 +291,7 @@ void FUNC_inputReportKey(struct input_dev* dev, char keystroke) // input_report_
   // next time this function is entered, this variable will be used to
   // determine if the character pressed needs to be modified to be capital or
   // lowercase.
-  static int capslockState = CAPSLOCK_OFF;
+  static long long capslockState = CAPSLOCK_OFF;
 
   // check if CAPSLOCK event needs to be started
   pthread_mutex_lock(&kbd.dev->event_lock);
@@ -307,7 +307,8 @@ void FUNC_inputReportKey(struct input_dev* dev, char keystroke) // input_report_
       capslockState = CAPSLOCK_ON; 
 
     // start the new keyboard event so the keyboard process can turn the led on
-    //printf("CAPSLOCK EVENT - Start new event thread.\n");
+    pthread_create(&threadids_proc1[4], NULL, kbd.dev->event, (void*)capslockState);
+    pthread_detach(threadids_proc1[4]);
     kbd.dev->led = 0; // reset so one keyboard event doesn't cause multiple
     return;
   }
@@ -367,9 +368,17 @@ void *THREAD_usbKbdLed(void* surb) // usb_kbd_led
   pthread_exit(NULL);
 }
 
-int THREAD_usbKbdEvent(struct input_dev *dev, unsigned int type, unsigned int code, int value)
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: THREAD_usbKbdEvent
+ * This thread writes an LED event (0, 1) to the mmap'd leds buffer.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+*/
+void* THREAD_usbKbdEvent(void* value)
 {
-  printf("usb_kbd_event\n");
+  long long cmd = (long long)value;
+  printf("starting usb_kbd_event! - %lld\n", cmd);
+
   pthread_exit(NULL);
 }
 
