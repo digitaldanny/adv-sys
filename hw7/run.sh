@@ -9,13 +9,8 @@
 # with the makefile.
 # +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 
-# Require user to run as root
-if [ `whoami` != root ]; then
-    echo "ERROR: Please run this script as root or using sudo (sudo ./run.sh)"
-    exit
-fi
-
 # cleanup
+fuser -k userapp
 ./reset.sh
 find . -type f -exec touch {} +
 
@@ -23,18 +18,6 @@ find . -type f -exec touch {} +
 echo "Building and installing device driver"
 make
 
-DEV=/dev/usbkbd
-if [ -c "$DEV" ]; then
-    echo "$DEV already loaded."
-else 
-    echo "$DEV is not loaded. Registering now."
-    insmod driver.ko
-fi
-
 # run user application for testing
 echo "Running user application"
-./userapp
-
-# Uninstall device driver
-#echo "Uninstalling device driver"
-#rmmod mycdrv.ko
+./userapp < input.txt
