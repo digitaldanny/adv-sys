@@ -8,4 +8,3 @@ find . -name "*.order" -type f -delete
 find . -name "*.mod.*" -type f -delete
 find . -name "*.ko" -type f -delete
 find . -name "userapp" -type f -delete
-rm userapp
