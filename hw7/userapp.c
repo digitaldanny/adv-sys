@@ -24,10 +24,35 @@
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
 */
 
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: thread_signal
+ * This struct is used to safely signal other threads to continue.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+*/
+typedef struct thread_signal
+{ 
+  pthread_mutex_t mutex;
+  int cond;
+} thread_signal_t;
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: urb
+ * This struct is used to 
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+*/
 struct urb
 {
-  int pipe;
-  struct input_dev* dev;
+  void* context; // "parameters" to pass into completion routine
+  void* (*complete)(void* urb); // completion routine that runs once urb submitted
+  char transfer_buffer; // for this application, the buffer is a 1 wide character
+
+
+  // extra attributes
+  pthread_mutex_t transfer_buffer_lock; // multiple threads using transfer buff requires lock
+  char debug; // ID used to determine that URBs are being passed correctly
+  thread_signal_t poll; // signal set by usb_submit_urb to poll again
 };
 
 struct input_dev
@@ -44,18 +69,6 @@ struct usb_kbd
 };
 
 /*
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
- * SUMMARY: thread_signal
- * This struct is used to safely signal other threads to continue.
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
-*/
-typedef struct thread_signal
-{ 
-  pthread_mutex_t mutex;
-  int cond;
-} thread_signal_t;
-
-/*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  *                                PROTOTYPES
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -63,8 +76,8 @@ typedef struct thread_signal
 
 // usbkbd driver simulator related threads+process
 void PROC_usbkbdDriverSimulator();
-void *THREAD_usbKbdIrq(struct urb *urb);
-void *THREAD_usbKbdLed(struct urb *urb);
+void *THREAD_usbKbdIrq(void* urb);
+void *THREAD_usbKbdLed(void* urb);
 int THREAD_usbKbdEvent(struct input_dev *dev, unsigned int type, unsigned int code, int value);
 void *THREAD_simSideEndpointInterrupt();
 void *THREAD_simSideEndpointControl();
@@ -93,6 +106,8 @@ thread_signal_t driverShutdown;
 // simulator data structures
 struct input_dev dev;
 struct usb_kbd kbd;
+struct urb irq_urb;
+struct urb led_urb;
 
 // thread ids for both processes
 pthread_t threadids_proc1[5]; // simulator thread ids
@@ -206,11 +221,20 @@ int FUNC_usbKbdOpen(struct input_dev* dev) // usb_kbd_open
   printf("usb_open_kbd\n");
 
   // Get device data ---> struct usb_kbd *kbd = input_get_drvdata(dev);
-	struct usb_kbd *kbd;
-  kbd->dev = dev;
-	//kbd->irq->dev = dev; // added this - probable segfault
+  kbd.dev = dev;
+  kbd.irq = &irq_urb;
+  kbd.led = &led_urb;
 
-	FUNC_usbSubmitUrb(kbd->irq);
+  // configure urb parameters
+  kbd.irq->debug = 'I';
+  kbd.irq->complete = THREAD_usbKbdIrq;
+  pthread_mutex_init(&kbd.irq->transfer_buffer_lock, NULL);
+
+  kbd.led->debug = 'L';
+  kbd.led->complete = THREAD_usbKbdLed;
+  pthread_mutex_init(&kbd.led->transfer_buffer_lock, NULL);
+
+	FUNC_usbSubmitUrb(kbd.irq);
 	return 0;
 }
 
@@ -231,8 +255,8 @@ void FUNC_usbSubmitUrb(struct urb* urb) // usb_submit_urb
   {
     printf("Launching server side endpoints\n");
     pthread_barrier_init (&waitForSimulationSetup, NULL, 3);
-    pthread_create(&threadids_proc1[0], NULL, THREAD_simSideEndpointInterrupt, NULL);
-    pthread_create(&threadids_proc1[1], NULL, THREAD_simSideEndpointControl, NULL);
+    pthread_create(&threadids_proc1[0], NULL, THREAD_simSideEndpointInterrupt, (void*)kbd.irq);
+    pthread_create(&threadids_proc1[1], NULL, THREAD_simSideEndpointControl, (void*)kbd.led);
     pthread_detach(threadids_proc1[0]);
     pthread_detach(threadids_proc1[1]);
 
@@ -242,7 +266,11 @@ void FUNC_usbSubmitUrb(struct urb* urb) // usb_submit_urb
     count++;
   }
 
-  // possibly trigger urb completion handler due to missing ACK?
+  // signal appropriate urb handler to poll again
+  pthread_mutex_lock(&urb->poll.mutex);
+  printf("usb_submit_urb enabling polling for URB ID: %c", urb->debug);
+  urb->poll.cond = 1;
+  pthread_mutex_unlock(&urb->poll.mutex);
 }
 
 /*
@@ -252,21 +280,32 @@ void FUNC_usbSubmitUrb(struct urb* urb) // usb_submit_urb
  * which key is pressed to the input subsystem.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 */
-void *THREAD_usbKbdIrq(struct urb *urb) // usb_kbd_irq
+void *THREAD_usbKbdIrq(void* surb) // usb_kbd_irq
 {
-  printf("usb_kbd_irq\n");
+  struct urb* urb = (struct urb*)surb;
+  printf("usb_kbd_irq started!! - URB ID: %c\n", urb->debug);
 
   //struct usb_kbd *kbd = urb->context;
+
+  // only start an input report call if the key is non-#
+  pthread_mutex_lock(&urb->transfer_buffer_lock);
+  if (urb->transfer_buffer != '#')
+  {
+    printf("usb_kbd_irq: %c!!!\n", urb->transfer_buffer);
+  }
+  pthread_mutex_unlock(&urb->transfer_buffer_lock);
 
   // find out key presses and key releases, then submit to input subsystem
   // for each event in old and not in new, check report key release with input_report_key
   //FUNC_usbSubmitUrb(urb); // resubmit URB
+  printf("Closing usb_kbd_irq\n");
   pthread_exit(NULL);
 }
 
-void *THREAD_usbKbdLed(struct urb *urb) // usb_kbd_led
+void *THREAD_usbKbdLed(void* surb) // usb_kbd_led
 {
-  printf("usb_kbd_led\n");
+  struct urb* urb = (struct urb*)surb;
+  printf("usb_kbd_led - URB ID: %c\n", urb->debug);
   pthread_exit(NULL);
 }
 
@@ -288,17 +327,39 @@ int THREAD_usbKbdEvent(struct input_dev *dev, unsigned int type, unsigned int co
  * threadid = threadids_proc1[4]
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 */
-void *THREAD_simSideEndpointInterrupt()
+void *THREAD_simSideEndpointInterrupt(struct urb *urb) // USB core
 {
   char keyboardStroke;
-  printf("Launching driver_irq_endpoint\n");
+  printf("Launching driver_irq_endpoint - URB ID: %c\n", urb->debug);
 
   // sync all simulation side threads
   pthread_barrier_wait (&waitForSimulationSetup);
 
-  while(read(pipeInterruptFd[PIPE_READ], &keyboardStroke, 1) > 0)
+  // this while-loop waits for the usb_submit_urb function to allow
+  // polling before reading from the interrupt endpoint pipe and 
+  // starting a new thread handler.
+  while(1)
   {
-    printf("SIM: %c!!!\n", keyboardStroke);
+    // wait for the usb_submit_urb command before getting another character from the pipe
+    pthread_mutex_lock(&urb->poll.mutex);
+    while(urb->poll.cond == 0)
+    {
+      pthread_mutex_unlock(&urb->poll.mutex);
+      sleep(0.1);
+      pthread_mutex_lock(&urb->poll.mutex);
+    }
+    pthread_mutex_unlock(&urb->poll.mutex);
+
+    // exit the infinite loop if the pipe is out of data to read
+    if (read(pipeInterruptFd[PIPE_READ], &keyboardStroke, 1) == 0)
+      break;
+
+    // start a new usb_kbd_irq to handle the keyboard stroke
+    pthread_mutex_lock(&urb->transfer_buffer_lock);
+    urb->transfer_buffer = keyboardStroke;
+    pthread_mutex_unlock(&urb->transfer_buffer_lock);
+    pthread_create(&threadids_proc1[2], NULL, urb->complete, (void*)urb); // start urb completion handler
+    pthread_join(threadids_proc1[2], NULL); // wait for urb completion handler
   }
 
   printf("Simulation side IRQ endpoint closing..\n");
@@ -314,9 +375,9 @@ void *THREAD_simSideEndpointInterrupt()
  * threadid = threadids_proc1[5]
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 */
-void *THREAD_simSideEndpointControl()
+void *THREAD_simSideEndpointControl(struct urb *urb)
 {
-  printf("Launching driver_control_endpoint\n");
+  printf("Launching driver_control_endpoint - URB ID: %c\n", urb->debug);
 
   // sync all simulation side threads
   pthread_barrier_wait (&waitForSimulationSetup);
