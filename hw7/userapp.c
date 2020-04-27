@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include "pthread.h"
+#include <ctype.h>
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -17,6 +18,8 @@
 
 #define PIPE_READ           0
 #define PIPE_WRITE          1
+#define CAPSLOCK_OFF        0
+#define CAPSLOCK_ON         1
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -48,7 +51,6 @@ struct urb
   void* (*complete)(void* urb); // completion routine that runs once urb submitted
   char transfer_buffer; // for this application, the buffer is a 1 wide character
 
-
   // extra attributes
   pthread_mutex_t transfer_buffer_lock; // multiple threads using transfer buff requires lock
   char debug; // ID used to determine that URBs are being passed correctly
@@ -59,6 +61,7 @@ struct input_dev
 {
   int (*event) (struct input_dev *dev, unsigned int type, unsigned int code, int value);
   int led;
+  pthread_mutex_t event_lock;
 };
 
 struct usb_kbd
@@ -83,6 +86,7 @@ void *THREAD_simSideEndpointInterrupt();
 void *THREAD_simSideEndpointControl();
 int FUNC_usbKbdOpen(struct input_dev* dev);
 void FUNC_usbSubmitUrb(struct urb* urb);
+void FUNC_inputReportKey(struct input_dev* dev, char keystroke);
 
 // keyboard related threads+process
 void PROC_keyboard();
@@ -193,6 +197,7 @@ void PROC_usbkbdDriverSimulator() // child
   // define device parameters
   dev.event = &THREAD_usbKbdEvent;
   dev.led = 0;
+  pthread_mutex_init(&dev.event_lock, NULL);
 
   // usb_kbd_open to initialize device and urb
   FUNC_usbKbdOpen(&dev);
@@ -275,6 +280,52 @@ void FUNC_usbSubmitUrb(struct urb* urb) // usb_submit_urb
 
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: FUNC_inputReportKey
+ * This function outputs the character input by the usb_kbd_irq thread and
+ * also creates the usb_kbd_event if the device shows that the led is on or
+ * off.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+*/
+void FUNC_inputReportKey(struct input_dev* dev, char keystroke) // input_report_key
+{
+  // next time this function is entered, this variable will be used to
+  // determine if the character pressed needs to be modified to be capital or
+  // lowercase.
+  static int capslockState = CAPSLOCK_OFF;
+
+  // check if CAPSLOCK event needs to be started
+  pthread_mutex_lock(&kbd.dev->event_lock);
+  if (kbd.dev->led == 1)
+  {
+    pthread_mutex_unlock(&kbd.dev->event_lock);
+
+    // if the CAPSLOCK is currently on, turn it off.
+    // if the CAPSLOCK is currently off, turn it on.
+    if (capslockState == CAPSLOCK_ON)
+      capslockState = CAPSLOCK_OFF; 
+    else
+      capslockState = CAPSLOCK_ON; 
+
+    // start the new keyboard event so the keyboard process can turn the led on
+    //printf("CAPSLOCK EVENT - Start new event thread.\n");
+    kbd.dev->led = 0; // reset so one keyboard event doesn't cause multiple
+    return;
+  }
+  pthread_mutex_unlock(&kbd.dev->event_lock);
+
+  // ignored '&' symbol as an event in usb_kbd_irq, so I must ignore it here to avoid outputting it..
+  if (keystroke == '&')
+    return;
+
+  // If there is no keyboard event, determine whether the keystroke needs to be modified
+  if (capslockState == CAPSLOCK_ON)
+    putchar(toupper(keystroke));
+  else
+    putchar(keystroke);
+}
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  * SUMMARY: THREAD_usbKbdIrq
  * This thread handles input from the interrupt endpoint and reports
  * which key is pressed to the input subsystem.
@@ -283,22 +334,29 @@ void FUNC_usbSubmitUrb(struct urb* urb) // usb_submit_urb
 void *THREAD_usbKbdIrq(void* surb) // usb_kbd_irq
 {
   struct urb* urb = (struct urb*)surb;
-  printf("usb_kbd_irq started!! - URB ID: %c\n", urb->debug);
-
-  //struct usb_kbd *kbd = urb->context;
 
   // only start an input report call if the key is non-#
   pthread_mutex_lock(&urb->transfer_buffer_lock);
   if (urb->transfer_buffer != '#')
   {
-    printf("usb_kbd_irq: %c!!!\n", urb->transfer_buffer);
+    //printf("usb_kbd_irq: %c\n", urb->transfer_buffer);
+    // determine if the kbd->dev->led should be on or off
+    // based on whether the capslock button was pressed or not.
+    pthread_mutex_lock(&kbd.dev->event_lock);
+    if (urb->transfer_buffer == '@')
+      kbd.dev->led = 1; // capslock event
+    else
+      kbd.dev->led = 0; // no capslock event
+    pthread_mutex_unlock(&kbd.dev->event_lock);
+
+    // report the key that was pressed along with modified kbd device
+    FUNC_inputReportKey(kbd.dev, urb->transfer_buffer);
   }
   pthread_mutex_unlock(&urb->transfer_buffer_lock);
 
   // find out key presses and key releases, then submit to input subsystem
   // for each event in old and not in new, check report key release with input_report_key
   //FUNC_usbSubmitUrb(urb); // resubmit URB
-  printf("Closing usb_kbd_irq\n");
   pthread_exit(NULL);
 }
 
