@@ -70,6 +70,10 @@ void *THREAD_endpointControl();
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
 */
 
+// syncronization used to wait for all simulation threads to set up
+// before receiving data from the keyboard.
+pthread_barrier_t waitForSimulationSetup;
+
 // simulator data structures
 struct input_dev dev;
 struct usb_kbd kbd;
@@ -82,6 +86,7 @@ pthread_t threadids_proc2[2]; // keyboard thread ids
 int pipeInterruptFd[2];
 int pipeControlFd[2];
 int pipeAckFd[2];
+int pipeSync[2];
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -104,7 +109,8 @@ int main()
   // initialize all pipes
   if (pipe(pipeInterruptFd) == -1 || 
       pipe(pipeControlFd) == -1   ||
-      pipe(pipeAckFd) == -1)
+      pipe(pipeAckFd) == -1       ||
+      pipe(pipeSync) == -1)
     printf("ERROR: Pipe initialization.\n");
 
   // start the keyboard and simulation processes
@@ -147,6 +153,7 @@ void PROC_usbkbdDriverSimulator() // child
   close(pipeInterruptFd[PIPE_WRITE]); // close write end
   close(pipeAckFd[PIPE_WRITE]);       // close write end
   close(pipeControlFd[PIPE_READ]);    // close read end
+  close(pipeSync[PIPE_READ]);         // close read end
 
   // define device parameters
   dev.event = &THREAD_usbKbdEvent;
@@ -191,16 +198,22 @@ int FUNC_usbKbdOpen(struct input_dev* dev) // usb_kbd_open
 void FUNC_usbSubmitUrb(struct urb* urb) // usb_submit_urb
 {
   printf("usb_submit_urb\n");
+  int sync = 'S';
   static int count = 0; // defaults to 0
 
   // launch usb_kbd_irq and usb_kbd_led threads on the first iteration. 
   if (count == 0)
   {
     printf("Launching server side endpoints\n");
+    pthread_barrier_init (&waitForSimulationSetup, NULL, 3);
     pthread_create(&threadids_proc1[0], NULL, THREAD_simSideEndpointInterrupt, NULL);
     pthread_create(&threadids_proc1[1], NULL, THREAD_simSideEndpointControl, NULL);
     pthread_detach(threadids_proc1[0]);
     pthread_detach(threadids_proc1[1]);
+
+    // wait for simulation-side threads to get set up, then signal keyboard process
+    pthread_barrier_wait (&waitForSimulationSetup);
+    write(pipeSync[PIPE_WRITE], &sync, 1);
     count++;
   }
 
@@ -217,6 +230,7 @@ void FUNC_usbSubmitUrb(struct urb* urb) // usb_submit_urb
 void *THREAD_usbKbdIrq(struct urb *urb) // usb_kbd_irq
 {
   printf("usb_kbd_irq\n");
+
   //struct usb_kbd *kbd = urb->context;
 
   // find out key presses and key releases, then submit to input subsystem
@@ -252,6 +266,10 @@ int THREAD_usbKbdEvent(struct input_dev *dev, unsigned int type, unsigned int co
 void *THREAD_simSideEndpointInterrupt()
 {
   printf("Launching driver_irq_endpoint\n");
+
+  // sync all simulation side threads
+  pthread_barrier_wait (&waitForSimulationSetup);
+
   static int count = 0;
 
   // if this is the first time running, signal interrupt endpoint to begin sending
@@ -273,6 +291,10 @@ void *THREAD_simSideEndpointInterrupt()
 void *THREAD_simSideEndpointControl()
 {
   printf("Launching driver_control_endpoint\n");
+
+  // sync all simulation side threads
+  pthread_barrier_wait (&waitForSimulationSetup);
+
   pthread_exit(NULL);
 }
 
@@ -290,6 +312,7 @@ void PROC_keyboard() // parent
   close(pipeInterruptFd[PIPE_READ]); // close read end
   close(pipeAckFd[PIPE_READ]);       // close read end
   close(pipeControlFd[PIPE_WRITE]);  // close write end
+  close(pipeSync[PIPE_WRITE]);       // close read end
 
   // Launch both endpoint threads
   pthread_create(&threadids_proc2[0], NULL, THREAD_endpointInterrupt, NULL);
@@ -313,10 +336,15 @@ void PROC_keyboard() // parent
 void *THREAD_endpointInterrupt() // usb core?
 {
   char keyboardInput;
+  char sync = 'X';
 
   printf("THREAD_endpointInterrupt\n"); // DEBUG
 
   // Sync point waiting for driver threads to initialize
+  while(sync != 'S')
+  {
+    read(pipeSync[PIPE_READ], &sync, 1);
+  }
 
   // forward characters from stdin to the pipe
   while(read(STDIN_FILENO, &keyboardInput, 1) > 0)

@@ -2,7 +2,7 @@ all: userapp clean
 
 userapp: 
 	@echo "========= building userapp ========="
-	gcc -std=c99 -o userapp userapp.c -pthread
+	gcc -o userapp userapp.c -pthread
 
 .PHONY : clean
 clean:
