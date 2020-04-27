@@ -6,28 +6,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
-#include <pthread.h>
+#include <sys/wait.h>
+#include "pthread.h"
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  *                                PROTOTYPES
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
 */
-void *thread1();
-void *thread2();
 
 // usbkbd driver simulator related threads+process
 void PROC_usbkbdDriverSimulator();
-void THREAD_usbKbdIrq();
-void THREAD_usbKbdLed();
-void THREAD_usbKbdEvent();
-void THREAD_simSideEndpointInterrupt();
-void THREAD_simSideEndpointControl();
+void *THREAD_usbKbdIrq();
+void *THREAD_usbKbdLed();
+void *THREAD_usbKbdEvent();
+void *THREAD_simSideEndpointInterrupt();
+void *THREAD_simSideEndpointControl();
 
 // keyboard related threads+process
 void PROC_keyboard();
-void THREAD_endpointInterrupt();
-void THREAD_endpointControl();
+void *THREAD_endpointInterrupt();
+void *THREAD_endpointControl();
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -35,7 +34,8 @@ void THREAD_endpointControl();
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
 */
 
-pthread_t threadid[2];
+pthread_t threadids_proc1[5]; // simulator thread ids
+pthread_t threadids_proc2[2]; // keyboard thread ids
 
 // pipe file descriptors
 int pipeInterruptFd[2];
@@ -71,7 +71,6 @@ int main()
   {
     case -1:
       printf("ERROR (fork): Cannot start both processes.\n");
-      wait(NULL);
       exit(0);
 
     case 0: // child
@@ -106,14 +105,17 @@ void PROC_usbkbdDriverSimulator() // child
   close(pipeAckFd[1]);       // close write end
   close(pipeInterruptFd[1]); // close write end
 
+  // usb_kbd_open
+
   _exit(0);
 }
 
-void THREAD_usbKbdIrq();
-void THREAD_usbKbdLed();
-void THREAD_usbKbdEvent();
-void THREAD_simSideEndpointInterrupt();
-void THREAD_simSideEndpointControl();
+// simulator related threads
+void *THREAD_usbKbdIrq();  // threadid[0]
+void *THREAD_usbKbdLed();  // threadid[1]
+void *THREAD_usbKbdEvent(); // threadid[2]
+void *THREAD_simSideEndpointInterrupt(); // threadid[3]
+void *THREAD_simSideEndpointControl(); // threadid[4]
 
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
@@ -128,10 +130,43 @@ void PROC_keyboard() // parent
   close(pipeAckFd[0]);       // close read end
   close(pipeInterruptFd[0]); // close read end
 
+  // Launch both endpoint threads
+  pthread_create(&threadids_proc2[0], NULL, THREAD_endpointInterrupt, NULL);
+  pthread_create(&threadids_proc2[1], NULL, THREAD_endpointControl, NULL);
+
+  // Wait for threads to join, then exit the process
+  for (int i = 0; i < 2; i++)
+    pthread_join(threadids_proc2[i], NULL);
   exit(0);
 } 
 
-// keyboard related threads+process
-void PROC_keyboard();
-void THREAD_endpointInterrupt();
-void THREAD_endpointControl();
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: THREAD_endpointInterrupt
+ * This thread forwards stdin to the usbkbd simulator through the IRQ pipe.
+ * 
+ * OTHER DETAILS:
+ * threadid = threadids_proc2[0]
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+*/
+void *THREAD_endpointInterrupt()
+{
+  printf("THREAD_endpointInterrupt\n");
+  pthread_exit(NULL);
+}
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: THREAD_endpointControl
+ * This thread manages the final text that is output to the terminal by 
+ * reading from the mmap'd led buffer and the control pipe for characters.
+ * 
+ * OTHER DETAILS:
+ * threadid = threadids_proc2[0]
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+*/
+void *THREAD_endpointControl()
+{
+  printf("THREAD_endpointControl\n");
+  pthread_exit(NULL);
+}
