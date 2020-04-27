@@ -9,6 +9,7 @@
 #include <sys/wait.h>
 #include "pthread.h"
 #include <ctype.h>
+#include <sys/mman.h>
 
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -38,6 +39,19 @@ typedef struct thread_signal
   pthread_mutex_t mutex;
   int cond;
 } thread_signal_t;
+
+/*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: ledsBuf
+ * This is the mmap'd structure used to transfer the led commands from 
+ * driver simulation to the keyboard process.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+*/
+typedef struct ledsBuf
+{
+  long long buf;
+  pthread_mutex_t mutex;
+} ledsBuf_t;
 
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
@@ -123,6 +137,9 @@ int pipeControlFd[2];
 int pipeAckFd[2];
 int pipeSync[2];
 
+// mmaped area (led buffer only ever has to hold 1 instruction)
+ledsBuf_t* ledsBuffer;
+
 /*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  *                                 PROCESSES
@@ -140,6 +157,12 @@ int main()
 {
   setbuf(stdout, NULL); // do not buffer stdout
   setbuf(stdin, NULL); // do not buffer stdin
+
+  // set up the memory mapped area for led commands
+  ledsBuffer = (ledsBuf_t*)mmap(NULL, sizeof(ledsBuf_t), 
+                                (PROT_READ | PROT_WRITE), (MAP_SHARED | MAP_ANON),
+                                -1, 0);
+  pthread_mutex_init(&ledsBuffer->mutex, NULL);
 
   // initialize all pipes
   if (pipe(pipeInterruptFd) == -1 || 
@@ -223,8 +246,6 @@ void PROC_usbkbdDriverSimulator() // child
 */
 int FUNC_usbKbdOpen(struct input_dev* dev) // usb_kbd_open
 {
-  printf("usb_open_kbd\n");
-
   // Get device data ---> struct usb_kbd *kbd = input_get_drvdata(dev);
   kbd.dev = dev;
   kbd.irq = &irq_urb;
@@ -251,14 +272,12 @@ int FUNC_usbKbdOpen(struct input_dev* dev) // usb_kbd_open
 */
 void FUNC_usbSubmitUrb(struct urb* urb) // usb_submit_urb
 {
-  printf("usb_submit_urb\n");
   int sync = 'S';
   static int count = 0; // defaults to 0
 
   // launch usb_kbd_irq and usb_kbd_led threads on the first iteration. 
   if (count == 0)
   {
-    printf("Launching server side endpoints\n");
     pthread_barrier_init (&waitForSimulationSetup, NULL, 3);
     pthread_create(&threadids_proc1[0], NULL, THREAD_simSideEndpointInterrupt, (void*)kbd.irq);
     pthread_create(&threadids_proc1[1], NULL, THREAD_simSideEndpointControl, (void*)kbd.led);
@@ -273,7 +292,6 @@ void FUNC_usbSubmitUrb(struct urb* urb) // usb_submit_urb
 
   // signal appropriate urb handler to poll again
   pthread_mutex_lock(&urb->poll.mutex);
-  printf("usb_submit_urb enabling polling for URB ID: %c", urb->debug);
   urb->poll.cond = 1;
   pthread_mutex_unlock(&urb->poll.mutex);
 }
@@ -377,8 +395,14 @@ void *THREAD_usbKbdLed(void* surb) // usb_kbd_led
 void* THREAD_usbKbdEvent(void* value)
 {
   long long cmd = (long long)value;
-  printf("starting usb_kbd_event! - %lld\n", cmd);
 
+  // first write to the mmap'd area
+  pthread_mutex_lock(&ledsBuffer->mutex);
+  ledsBuffer->buf = cmd;
+  pthread_mutex_unlock(&ledsBuffer->mutex);
+
+  // submit the urb to tell control endpoint that command was sent
+  FUNC_usbSubmitUrb(kbd.led);
   pthread_exit(NULL);
 }
 
@@ -397,7 +421,6 @@ void* THREAD_usbKbdEvent(void* value)
 void *THREAD_simSideEndpointInterrupt(struct urb *urb) // USB core
 {
   char keyboardStroke;
-  printf("Launching driver_irq_endpoint - URB ID: %c\n", urb->debug);
 
   // sync all simulation side threads
   pthread_barrier_wait (&waitForSimulationSetup);
@@ -444,13 +467,37 @@ void *THREAD_simSideEndpointInterrupt(struct urb *urb) // USB core
 */
 void *THREAD_simSideEndpointControl(struct urb *urb)
 {
-  printf("Launching driver_control_endpoint - URB ID: %c\n", urb->debug);
+  char cmd = 'C';
+  char ack = 'A';
 
   // sync all simulation side threads
   pthread_barrier_wait (&waitForSimulationSetup);
 
-  // CAPSLOCK stuff goes here..
+  while(1)
+  {
+    pthread_mutex_lock(&urb->poll.mutex);
+    // wait for usb_kbd_submit to enable polling
+    while(urb->poll.cond == 0)
+    {
+      pthread_mutex_unlock(&urb->poll.mutex);
+      sleep(0.1);
+      pthread_mutex_lock(&urb->poll.mutex);
+    }
 
+    urb->poll.cond = 0; // reset so that poll only happens once
+    pthread_mutex_unlock(&urb->poll.mutex);
+
+    // tell the control endpoint that a command is available
+    write(pipeControlFd[PIPE_WRITE], &cmd, 1);
+
+    // Block while waiting for ack. Once ack is received, it is launch the usb_kbd_led thread.
+    read(pipeAckFd[PIPE_READ], &ack, 1);
+
+    // launch the usb_kbd_led thread 
+
+  }
+  
+  printf("Simulation side control endpoint closing\n");
   pthread_exit(NULL);
 }
 
@@ -482,7 +529,7 @@ void PROC_keyboard() // parent
   for (int i = 0; i < 2; i++)
     pthread_join(threadids_proc2[i], NULL);
 
-  printf("Keyboard closing\n");
+  printf("Keyboard process closing\n");
   exit(0);
 } 
 
@@ -499,8 +546,6 @@ void *THREAD_endpointInterrupt() // usb core?
 {
   char keyboardInput;
   char sync = 'X';
-
-  printf("THREAD_endpointInterrupt\n"); // DEBUG
 
   // Sync point waiting for driver threads to initialize
   while(sync != 'S')
@@ -539,8 +584,6 @@ void *THREAD_endpointControl()
   char cmd = 'X'; // Default value - X forces thread to wait for command
   int ledStatus = 0;
 
-  printf("THREAD_endpointControl\n");
-
   // make the control pipe's read end noneblocking
   fcntl(pipeControlFd[PIPE_READ], F_SETFL, fcntl(pipeControlFd[PIPE_READ], F_GETFL) | O_NONBLOCK);
 
@@ -558,15 +601,18 @@ void *THREAD_endpointControl()
     pthread_mutex_unlock(&keyboardShutdown.mutex);
 
     // read from the leds buffer
+    pthread_mutex_lock(&ledsBuffer->mutex);
+    ledStatus = ledsBuffer->buf;
+    pthread_mutex_unlock(&ledsBuffer->mutex);
 
     // Determine if the LED output should be ON or OFF
-    if (ledStatus == 1)
+    if (ledStatus == 1) // Turn capslock ON
     {
-      // Turn capslock ON
+      printf("ON ");
     }
-    else
+    else // Turn capslock OFF
     {
-      // Turn capslock OFF
+      printf("OFF ");
     }
 
     // ACK - Notify the driver that the command has been received and handled
@@ -579,7 +625,6 @@ void *THREAD_endpointControl()
     pthread_mutex_lock(&keyboardShutdown.mutex);
     if (keyboardShutdown.cond == 1)
     {
-      printf("Control endpoint received shutdown signal\n");
       pthread_mutex_unlock(&keyboardShutdown.mutex);
       break;
     }
