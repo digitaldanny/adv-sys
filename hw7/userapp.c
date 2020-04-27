@@ -24,58 +24,23 @@
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
 */
 
-/*
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
- * SUMMARY: custom_input_dev
- * ATTRIBUTES:
- * @event
- *    Event handler for events sent_to_device which carries out the requested
- *    action (turn on LED, report key?)
- * @led
- *    1 if LED is on, 0 if LED is off.
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
-*/
-struct custom_input_dev
+struct urb
 {
-  int (* event) (struct custom_input_dev *dev, unsigned int type, unsigned int code, int value);
+  int pipe;
+  struct input_dev* dev;
+};
+
+struct input_dev
+{
+  int (*event) (struct input_dev *dev, unsigned int type, unsigned int code, int value);
   int led;
 };
 
-/*
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
- * SUMMARY: custom_usb_kbd
- * ATTRIBUTES:
- * @event
- *    Event handler for events sent_to_device which carries out the requested
- *    action (turn on LED, report key?)
- * @led
- *    1 if LED is on, 0 if LED is off.
- * 
- * NOTES:
- * ~led size changed to one wide since implementation will have a 1 wide
- * pipe so every led will be handled one transfer at a time.
- * ~irq size changed to one wide since implementation uses 1 wide window
- * on interrupt endpoint.
- * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
-*/
-struct custom_usb_kbd 
+struct usb_kbd
 {
-	struct custom_input_dev *dev;
-	// unsigned char old[8]; // copy of 'new' buffer to save key events from previous window
-	struct urb* irq; // if new key event, store in the new buffer
-  struct urb* led; // turn ON+OFF the leds as specified by the leds buffer
-	// unsigned char newleds; // new led commands stored in newleds buffer and copied to leds when URB can be sent
-	// char name[128];
-	// char phys[64];
-
-	// unsigned char *new;
-	// struct usb_ctrlrequest *cr;
-	// unsigned char *leds;
-	// dma_addr_t new_dma;
-	// dma_addr_t leds_dma;
-	
-	// spinlock_t leds_lock;
-	// bool led_urb_submitted;
+  struct input_dev* dev;
+  struct urb* irq;
+  struct urb* led;
 };
 
 /*
@@ -86,13 +51,13 @@ struct custom_usb_kbd
 
 // usbkbd driver simulator related threads+process
 void PROC_usbkbdDriverSimulator();
-void *THREAD_usbKbdIrq();
-void *THREAD_usbKbdLed();
-void *THREAD_usbKbdEvent();
+void *THREAD_usbKbdIrq(struct urb *urb);
+void *THREAD_usbKbdLed(struct urb *urb);
+int THREAD_usbKbdEvent(struct input_dev *dev, unsigned int type, unsigned int code, int value);
 void *THREAD_simSideEndpointInterrupt();
 void *THREAD_simSideEndpointControl();
-int FUNC_usbKbdOpen(struct custom_input_dev* dev);
-void FUNC_usbSubmitUrb(); //(struct urb* surb);
+int FUNC_usbKbdOpen(struct input_dev* dev);
+void FUNC_usbSubmitUrb(struct urb* urb);
 
 // keyboard related threads+process
 void PROC_keyboard();
@@ -106,8 +71,8 @@ void *THREAD_endpointControl();
 */
 
 // simulator data structures
-struct custom_input_dev dev;
-struct custom_usb_kbd kbd;
+struct input_dev dev;
+struct usb_kbd kbd;
 
 // thread ids for both processes
 pthread_t threadids_proc1[5]; // simulator thread ids
@@ -183,12 +148,16 @@ void PROC_usbkbdDriverSimulator() // child
   close(pipeAckFd[PIPE_WRITE]);       // close write end
   close(pipeControlFd[PIPE_READ]);    // close read end
 
+  // define device parameters
+  dev.event = &THREAD_usbKbdEvent;
+  dev.led = 0;
+
   // usb_kbd_open to initialize device and urb
   FUNC_usbKbdOpen(&dev);
 
-  while(1)
+  while(1) 
   {
-    // do stuff here..
+    // wait for shutdown signal??
   }
 
   _exit(0);
@@ -200,21 +169,17 @@ void PROC_usbkbdDriverSimulator() // child
  * This function creates a urb and submits it using the usbSubmitUrb function.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 */
-int FUNC_usbKbdOpen(struct custom_input_dev* dev) // usb_kbd_open
+int FUNC_usbKbdOpen(struct input_dev* dev) // usb_kbd_open
 {
   printf("usb_open_kbd\n");
 
-  // open the device 
-  //dev->event = ??;
-  //dev->led = 0; // caps lock initially off
+  // Get device data ---> struct usb_kbd *kbd = input_get_drvdata(dev);
+	struct usb_kbd *kbd;
+  kbd->dev = dev;
+	kbd->irq->dev = dev; // added this - probable segfault
 
-  // initialize urb with the selected device
-  //kbd.dev = &dev;
-  //kbd.irq = urb to submit here..
-  //kbd.led = urb to submit here..
-
-  FUNC_usbSubmitUrb(); //(struct urb* surb);
-  return 0;
+	FUNC_usbSubmitUrb(kbd->irq);
+	return 0;
 }
 
 /*
@@ -223,7 +188,7 @@ int FUNC_usbKbdOpen(struct custom_input_dev* dev) // usb_kbd_open
  * During its first iteration, this function 
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 */
-void FUNC_usbSubmitUrb() //(struct urb* surb); // usb_submit_urb
+void FUNC_usbSubmitUrb(struct urb* urb) // usb_submit_urb
 {
   printf("usb_submit_urb\n");
   static int count = 0; // defaults to 0
@@ -249,27 +214,36 @@ void FUNC_usbSubmitUrb() //(struct urb* surb); // usb_submit_urb
  * which key is pressed to the input subsystem.
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
 */
-void *THREAD_usbKbdIrq() // usb_kbd_irq
+void *THREAD_usbKbdIrq(struct urb *urb) // usb_kbd_irq
 {
+  printf("usb_kbd_irq\n");
+  //struct usb_kbd *kbd = urb->context;
+
   // find out key presses and key releases, then submit to input subsystem
   // for each event in old and not in new, check report key release with input_report_key
   //FUNC_usbSubmitUrb(urb); // resubmit URB
+  pthread_exit(NULL);
 }
 
-void *THREAD_usbKbdLed()
+void *THREAD_usbKbdLed(struct urb *urb) // usb_kbd_led
 {
-
+  printf("usb_kbd_led\n");
+  pthread_exit(NULL);
 }
 
-void *THREAD_usbKbdEvent()
+int THREAD_usbKbdEvent(struct input_dev *dev, unsigned int type, unsigned int code, int value)
 {
-
+  printf("usb_kbd_event\n");
+  pthread_exit(NULL);
 }
 
 /*
  * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
  * SUMMARY: THREAD_simSideEndpointInterrupt
- * ...
+ * ~This thread reads characters from the interrupt endpoint pipe and triggers
+ * the usbd_kbd_irq callback.
+ * ~Additionally, this thread signals the keyboard process that keystrokes
+ * can begin transferring.
  * 
  * OTHER DETAILS:
  * threadid = threadids_proc1[4]
@@ -278,6 +252,12 @@ void *THREAD_usbKbdEvent()
 void *THREAD_simSideEndpointInterrupt()
 {
   printf("Launching driver_irq_endpoint\n");
+  static int count = 0;
+
+  // if this is the first time running, signal interrupt endpoint to begin sending
+  // characters through the pipe.
+
+
   pthread_exit(NULL);
 }
 
