@@ -44,6 +44,18 @@ struct usb_kbd
 };
 
 /*
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ * SUMMARY: thread_signal
+ * This struct is used to safely signal other threads to continue.
+ * +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+*/
+typedef struct thread_signal
+{ 
+  pthread_mutex_t mutex;
+  int cond;
+} thread_signal_t;
+
+/*
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
  *                                PROTOTYPES
  * +=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+=====+
@@ -73,6 +85,10 @@ void *THREAD_endpointControl();
 // syncronization used to wait for all simulation threads to set up
 // before receiving data from the keyboard.
 pthread_barrier_t waitForSimulationSetup;
+
+// thread safe signals for both processes to signal shutting down the simulation
+thread_signal_t keyboardShutdown;
+thread_signal_t driverShutdown;
 
 // simulator data structures
 struct input_dev dev;
@@ -155,6 +171,10 @@ void PROC_usbkbdDriverSimulator() // child
   close(pipeControlFd[PIPE_READ]);    // close read end
   close(pipeSync[PIPE_READ]);         // close read end
 
+  // initialize shutdown signal
+  driverShutdown.cond = 0;
+  pthread_mutex_init(&driverShutdown.mutex, NULL);
+
   // define device parameters
   dev.event = &THREAD_usbKbdEvent;
   dev.led = 0;
@@ -162,11 +182,16 @@ void PROC_usbkbdDriverSimulator() // child
   // usb_kbd_open to initialize device and urb
   FUNC_usbKbdOpen(&dev);
 
-  while(1) 
+  // wait for the command to read from LED buffer 
+  pthread_mutex_lock(&driverShutdown.mutex);
+  while(driverShutdown.cond == 0)
   {
-    // wait for shutdown signal??
+    pthread_mutex_unlock(&keyboardShutdown.mutex);
+    sleep(0.1); // avoid starvation issues
+    pthread_mutex_lock(&keyboardShutdown.mutex);
   }
 
+  printf("Simulation closing\n");
   _exit(0);
 }
 
@@ -183,7 +208,7 @@ int FUNC_usbKbdOpen(struct input_dev* dev) // usb_kbd_open
   // Get device data ---> struct usb_kbd *kbd = input_get_drvdata(dev);
 	struct usb_kbd *kbd;
   kbd->dev = dev;
-	kbd->irq->dev = dev; // added this - probable segfault
+	//kbd->irq->dev = dev; // added this - probable segfault
 
 	FUNC_usbSubmitUrb(kbd->irq);
 	return 0;
@@ -265,17 +290,18 @@ int THREAD_usbKbdEvent(struct input_dev *dev, unsigned int type, unsigned int co
 */
 void *THREAD_simSideEndpointInterrupt()
 {
+  char keyboardStroke;
   printf("Launching driver_irq_endpoint\n");
 
   // sync all simulation side threads
   pthread_barrier_wait (&waitForSimulationSetup);
 
-  static int count = 0;
+  while(read(pipeInterruptFd[PIPE_READ], &keyboardStroke, 1) > 0)
+  {
+    printf("SIM: %c!!!\n", keyboardStroke);
+  }
 
-  // if this is the first time running, signal interrupt endpoint to begin sending
-  // characters through the pipe.
-
-
+  printf("Simulation side IRQ endpoint closing..\n");
   pthread_exit(NULL);
 }
 
@@ -294,6 +320,8 @@ void *THREAD_simSideEndpointControl()
 
   // sync all simulation side threads
   pthread_barrier_wait (&waitForSimulationSetup);
+
+  // CAPSLOCK stuff goes here..
 
   pthread_exit(NULL);
 }
@@ -314,6 +342,10 @@ void PROC_keyboard() // parent
   close(pipeControlFd[PIPE_WRITE]);  // close write end
   close(pipeSync[PIPE_WRITE]);       // close read end
 
+  // initialize shutdown signal
+  keyboardShutdown.cond = 0;
+  pthread_mutex_init(&keyboardShutdown.mutex, NULL);
+
   // Launch both endpoint threads
   pthread_create(&threadids_proc2[0], NULL, THREAD_endpointInterrupt, NULL);
   pthread_create(&threadids_proc2[1], NULL, THREAD_endpointControl, NULL);
@@ -321,6 +353,8 @@ void PROC_keyboard() // parent
   // Wait for threads to join, then exit the process
   for (int i = 0; i < 2; i++)
     pthread_join(threadids_proc2[i], NULL);
+
+  printf("Keyboard closing\n");
   exit(0);
 } 
 
@@ -349,11 +383,13 @@ void *THREAD_endpointInterrupt() // usb core?
   // forward characters from stdin to the pipe
   while(read(STDIN_FILENO, &keyboardInput, 1) > 0)
   {
-    write(STDOUT_FILENO, &keyboardInput, 1); // DEBUG
-    //write(pipeInterruptFd[PIPE_WRITE], &keyboardInput, 1); // redirect standard input to keyboard driver
+    write(pipeInterruptFd[PIPE_WRITE], &keyboardInput, 1); // redirect standard input to keyboard driver
   }
 
   // Signal all threads to close
+  pthread_mutex_lock(&keyboardShutdown.mutex);
+  keyboardShutdown.cond = 1;
+  pthread_mutex_unlock(&keyboardShutdown.mutex);
 
   printf("THREAD_endpointInterrupt ending\n");
   pthread_exit(NULL);
@@ -377,13 +413,21 @@ void *THREAD_endpointControl()
 
   printf("THREAD_endpointControl\n");
 
+  // make the control pipe's read end noneblocking
+  fcntl(pipeControlFd[PIPE_READ], F_SETFL, fcntl(pipeControlFd[PIPE_READ], F_GETFL) | O_NONBLOCK);
+
   while(1)
   {
     // wait for the command to read from LED buffer 
-    while(cmd != 'C')
+    pthread_mutex_lock(&keyboardShutdown.mutex);
+    while(cmd != 'C' && keyboardShutdown.cond == 0)
     {
+      pthread_mutex_unlock(&keyboardShutdown.mutex);
       read(pipeControlFd[PIPE_READ], &cmd, 1);
+      pthread_mutex_lock(&keyboardShutdown.mutex);
+      sleep(0.1); // avoid starvation issues
     }
+    pthread_mutex_unlock(&keyboardShutdown.mutex);
 
     // read from the leds buffer
 
@@ -402,7 +446,18 @@ void *THREAD_endpointControl()
 
     // force thread to wait for new command from driver
     cmd = 'X';
+
+    // check if the thread should close down
+    pthread_mutex_lock(&keyboardShutdown.mutex);
+    if (keyboardShutdown.cond == 1)
+    {
+      printf("Control endpoint received shutdown signal\n");
+      pthread_mutex_unlock(&keyboardShutdown.mutex);
+      break;
+    }
+    pthread_mutex_unlock(&keyboardShutdown.mutex);
   }
 
+  printf("Control endpoint closing\n");
   pthread_exit(NULL);
 }
