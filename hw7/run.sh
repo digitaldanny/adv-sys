@@ -21,3 +21,8 @@ make
 # run user application for testing
 echo "Running user application"
 ./userapp < input.txt
+
+echo "--------------------------------------------"
+echo "Running second testcase"
+echo "--------------------------------------------"
+./userapp < input2.txt

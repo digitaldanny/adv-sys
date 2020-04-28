@@ -50,6 +50,7 @@ typedef struct thread_signal
 typedef struct ledsBuf
 {
   long long buf;
+  int full;
   pthread_mutex_t mutex;
 } ledsBuf_t;
 
@@ -137,6 +138,10 @@ int pipeControlFd[2];
 int pipeAckFd[2];
 int pipeSync[2];
 
+// pipes to sync simulation ending
+int pipeKeyboardEnding[2];
+int pipeDriverEnding[2];
+
 // mmaped area (led buffer only ever has to hold 1 instruction)
 ledsBuf_t* ledsBuffer;
 
@@ -163,12 +168,16 @@ int main()
                                 (PROT_READ | PROT_WRITE), (MAP_SHARED | MAP_ANON),
                                 -1, 0);
   pthread_mutex_init(&ledsBuffer->mutex, NULL);
+  ledsBuffer->buf = 0;
+  ledsBuffer->full = 0;
 
   // initialize all pipes
   if (pipe(pipeInterruptFd) == -1 || 
       pipe(pipeControlFd) == -1   ||
       pipe(pipeAckFd) == -1       ||
-      pipe(pipeSync) == -1)
+      pipe(pipeSync) == -1        ||
+      pipe(pipeKeyboardEnding) == -1 ||
+      pipe(pipeDriverEnding) == -1)
     printf("ERROR: Pipe initialization.\n");
 
   // start the keyboard and simulation processes
@@ -229,12 +238,11 @@ void PROC_usbkbdDriverSimulator() // child
   pthread_mutex_lock(&driverShutdown.mutex);
   while(driverShutdown.cond == 0)
   {
-    pthread_mutex_unlock(&keyboardShutdown.mutex);
+    pthread_mutex_unlock(&driverShutdown.mutex);
     sleep(0.1); // avoid starvation issues
-    pthread_mutex_lock(&keyboardShutdown.mutex);
+    pthread_mutex_lock(&driverShutdown.mutex);
   }
-
-  printf("Simulation closing\n");
+  pthread_mutex_lock(&driverShutdown.mutex);
   _exit(0);
 }
 
@@ -381,8 +389,8 @@ void *THREAD_usbKbdIrq(void* surb) // usb_kbd_irq
 
 void *THREAD_usbKbdLed(void* surb) // usb_kbd_led
 {
-  struct urb* urb = (struct urb*)surb;
-  printf("usb_kbd_led - URB ID: %c\n", urb->debug);
+  struct urb* urb = (struct urb*)surb; 
+  //printf("usb_kbd_led - URB ID: %c\n", urb->debug);
   pthread_exit(NULL);
 }
 
@@ -398,6 +406,15 @@ void* THREAD_usbKbdEvent(void* value)
 
   // first write to the mmap'd area
   pthread_mutex_lock(&ledsBuffer->mutex);
+  
+  // wait for cmd to be accessed by keyboard process first
+  while (ledsBuffer->full == 1)
+  {
+    pthread_mutex_unlock(&ledsBuffer->mutex);
+    sleep(0.1);
+    pthread_mutex_lock(&ledsBuffer->mutex);
+  }
+  ledsBuffer->full = 1;
   ledsBuffer->buf = cmd;
   pthread_mutex_unlock(&ledsBuffer->mutex);
 
@@ -451,8 +468,6 @@ void *THREAD_simSideEndpointInterrupt(struct urb *urb) // USB core
     pthread_create(&threadids_proc1[2], NULL, urb->complete, (void*)urb); // start urb completion handler
     pthread_join(threadids_proc1[2], NULL); // wait for urb completion handler
   }
-
-  printf("Simulation side IRQ endpoint closing..\n");
   pthread_exit(NULL);
 }
 
@@ -494,10 +509,7 @@ void *THREAD_simSideEndpointControl(struct urb *urb)
     read(pipeAckFd[PIPE_READ], &ack, 1);
 
     // launch the usb_kbd_led thread 
-
   }
-  
-  printf("Simulation side control endpoint closing\n");
   pthread_exit(NULL);
 }
 
@@ -528,8 +540,6 @@ void PROC_keyboard() // parent
   // Wait for threads to join, then exit the process
   for (int i = 0; i < 2; i++)
     pthread_join(threadids_proc2[i], NULL);
-
-  printf("Keyboard process closing\n");
   exit(0);
 } 
 
@@ -559,12 +569,20 @@ void *THREAD_endpointInterrupt() // usb core?
     write(pipeInterruptFd[PIPE_WRITE], &keyboardInput, 1); // redirect standard input to keyboard driver
   }
 
+  /*
+  // signal driver that simulation can end..
+  // block until driver signals back that it is done too.
+  write(pipeKeyboardEnding[PIPE_WRITE], &sync, 1);
+  read(pipeDriverEnding[PIPE_READ], &sync, 1);
+  sleep(0.5); // wait for ON/OFF line to write.
+  */
+  sleep(2);
+  printf("\n");
+
   // Signal all threads to close
   pthread_mutex_lock(&keyboardShutdown.mutex);
   keyboardShutdown.cond = 1;
   pthread_mutex_unlock(&keyboardShutdown.mutex);
-
-  printf("THREAD_endpointInterrupt ending\n");
   pthread_exit(NULL);
 }
 
@@ -583,6 +601,7 @@ void *THREAD_endpointControl()
   char ack = 'A';
   char cmd = 'X'; // Default value - X forces thread to wait for command
   int ledStatus = 0;
+  int failCount = 0; // avoids infinite loop while cleaning up
 
   // make the control pipe's read end noneblocking
   fcntl(pipeControlFd[PIPE_READ], F_SETFL, fcntl(pipeControlFd[PIPE_READ], F_GETFL) | O_NONBLOCK);
@@ -602,18 +621,29 @@ void *THREAD_endpointControl()
 
     // read from the leds buffer
     pthread_mutex_lock(&ledsBuffer->mutex);
-    ledStatus = ledsBuffer->buf;
-    pthread_mutex_unlock(&ledsBuffer->mutex);
+    
+    // wait for cmd to be accessed by keyboard process first
+    while (ledsBuffer->full == 0)
+    {
+      if (failCount++ == 1000)
+        goto exit;
+  
+      pthread_mutex_unlock(&ledsBuffer->mutex);
+      sleep(0.1);
+      pthread_mutex_lock(&ledsBuffer->mutex);
+    }
+
+    failCount = 0;
+    ledsBuffer->full = 0; // shows that the value was read from the buffer
+    ledStatus = ledsBuffer->buf; // read value from buffer
+    
+    if (ledStatus == 1)
+      printf("ON ");
+    else 
+      printf("OFF ");
 
     // Determine if the LED output should be ON or OFF
-    if (ledStatus == 1) // Turn capslock ON
-    {
-      printf("ON ");
-    }
-    else // Turn capslock OFF
-    {
-      printf("OFF ");
-    }
+    pthread_mutex_unlock(&ledsBuffer->mutex);
 
     // ACK - Notify the driver that the command has been received and handled
     write(pipeAckFd[PIPE_WRITE], &ack, 1);
@@ -630,7 +660,7 @@ void *THREAD_endpointControl()
     }
     pthread_mutex_unlock(&keyboardShutdown.mutex);
   }
-
-  printf("Control endpoint closing\n");
+  exit:
   pthread_exit(NULL);
 }
+//ledStatus
