@@ -242,7 +242,9 @@ void PROC_usbkbdDriverSimulator() // child
     sleep(0.1); // avoid starvation issues
     pthread_mutex_lock(&driverShutdown.mutex);
   }
-  pthread_mutex_lock(&driverShutdown.mutex);
+  pthread_mutex_unlock(&driverShutdown.mutex);
+
+  sleep(2);
   _exit(0);
 }
 
@@ -468,6 +470,11 @@ void *THREAD_simSideEndpointInterrupt(struct urb *urb) // USB core
     pthread_create(&threadids_proc1[2], NULL, urb->complete, (void*)urb); // start urb completion handler
     pthread_join(threadids_proc1[2], NULL); // wait for urb completion handler
   }
+
+  // clean exit for this process
+  pthread_mutex_lock(&driverShutdown.mutex);
+  driverShutdown.cond = 1;
+  pthread_mutex_unlock(&driverShutdown.mutex);
   pthread_exit(NULL);
 }
 

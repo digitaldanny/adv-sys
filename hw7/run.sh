@@ -15,11 +15,13 @@ fuser -k userapp
 find . -type f -exec touch {} +
 
 # build and install device driver
-echo "Building and installing device driver"
+echo "Building simulation"
 make
 
 # run user application for testing
-echo "Running user application"
+echo "--------------------------------------------"
+echo "Running first testcase"
+echo "--------------------------------------------"
 ./userapp < input.txt
 
 echo "--------------------------------------------"
